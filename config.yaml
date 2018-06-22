@@ -1,0 +1,161 @@
+###########################################
+# data parameters
+###########################################
+--- !data
+bkg_data_dir: /media/storage/datasets/products/Background
+obj_data_dir: /media/storage/datasets/products/Lab
+n_items_min: 4
+n_items_max: 6
+image_shape: [320, 320]
+
+
+product_dims:
+  chips: [14, 6, 19]
+  bar1: [4, 3, 17]
+  bar2: [7, 3, 14]
+  can: [7, 7, 12]
+
+category:
+  Kettle chips: chips
+  Clif Bar Oatmeal Rasin Walnut: bar2
+  Doritos: chips
+  KIND NUTS and SPICES 1: bar1
+  La Croix Orange: can
+  Lays Sour Cream: chips
+  La Croix Pure: can
+  SANPELLEGRINO: can
+  ALMONDJOY: bar1
+  Clif Bar Blueberry Crisp: bar2
+  Cheetos Crunchy: chips
+  cheez it cheddar jack: chips
+  Coce classic: can
+  Nut Thins SRIRACHA: chips
+  Sprite: can
+  Fritos: chips
+  Karamucho: chips
+  Haribo: bar2
+  Lays Barbecue: chips
+  Nutter Butter Bites: chips
+  La Croix Lime: can
+  Clif Bar Chocolate Chip: bar2
+  Lays Classic: chips
+  Coce Diet: can
+  Coce zero: can
+  Doritos Cool Ranch: chips
+  Clif Bar Crunchy Peanut Butter: bar2
+  Clif Bar Chocolate Brownie: bar2
+  M&M: bar2
+  sprite zero: can
+
+
+
+###########################################
+# training parameters
+###########################################
+--- !train
+is_training: true
+model_dir: './models'
+num_epochs: 0
+learning_rate: 0.001
+learning_rate_decay:
+  decay_steps: 3000
+  decay_rate: 0.97
+
+batch_size: 32
+shuffle: true
+prefetch_size: 64
+
+optimizer:
+  name: adam
+  params:
+    beta1: 0.9
+    beta2: 0.999
+    epsilon: 1e-8
+
+num_parallel_map_calls: 12  # ~ num of CPU cores or less
+bbox_clf_weight: 5.
+bbox_reg_weight: 10.
+
+quantize: False
+
+###########################################
+# model parameters
+###########################################
+--- !model
+model_name: mobilenet_obj
+input_shape: [320, 320]
+output_shape: [40, 40]
+# output_stride: 8
+
+depth_multiplier: 1.
+min_depth: 8
+
+# in top-down format
+base_anchor_sizes: [80, 160]
+anchor_strides: [16, 32]
+
+anchor_scales: [1., 1.2, 1.4, 1.6, 1.8]
+anchor_ratios: [.33, .5, 1., 2., 3.]
+
+unmatched_threshold: 0.3
+matched_threshold: 0.7
+force_match_for_gt_bbox: true
+scale_factors: [10., 5.]
+
+skip_layers:
+  - layer_7
+  - layer_11
+  - layer_17
+
+fpn_depth: 96
+
+
+###########################################
+# inference parameters
+###########################################
+--- !infer
+model_dir: models/latest
+frozen_model: frozen_model.pb
+network_input_shape: [320, 320]
+
+# out_stride determines the output shape of network
+# For example, if input image is 320 x 320
+# With stride = 8, output heatmap is 40 x 40
+out_stride: 8
+
+# raw image is downsized to resize_shape [H, W]
+# NOTE : Tips for resizing:
+# * For speed, downsize image as much as possible
+#   but this usually results in loss of accuracy
+# * For best speed-accuracy compromise, resize image
+#   so that network_input_shape dimension is
+#   2 to 4 times bbox dimension
+#   where dimension is defined as sqrt(H * W)
+# * Try to preserve aspect ratio as far as possible
+# Example:
+#   [320, 569] for lab videos
+#   [456, 800] for Walmart videos
+resize_shape: [320, 426]
+
+# overlapping patches are encouraged
+# for more robust prediction near edge of patches
+# overlap is determined by the strides
+# which is the distance between two overlapping patches
+# [strides-y, strides-x]
+# Example:
+#   [1, 249] for lab videos
+#   [136, 240] for Walmart videos
+strides: [1, 106]
+
+# input_type can be images, video or camera
+input_type: camera
+# images can be a list or use *
+# images: /media/easystore/TrainData/Walmart/Round1/Recording_2/20180308_*.jpg
+images: /media/easystore/TrainData/Lab/April20/Recording_44/20180420_*.jpg
+
+video: /media/easystore/TrainData/Lab/April20/Recording_44/20180420_0000000.avi
+
+camera: http://root:123456@192.168.1.13/mjpg/video.mjpg
+
+display_bbox: false
+
