@@ -38,6 +38,7 @@ class Trainer(object):
         self.gpu_device = '/gpu:0'
         self.cpu_device = '/cpu:0'
         self.param_server_device = '/gpu:0'
+        self.labels = None
 
     def generate_anchors(self):
         all_anchors = []
@@ -62,6 +63,7 @@ class Trainer(object):
         anchors = self.generate_anchors()
         # num_keypoints = len(train_cfg.train_keypoints)
         data_reader = ObjectDataReader(self.data_cfg)
+        self.labels = data_reader.product_names
         dataset = data_reader.read_data(train_cfg)
 
         def map_fn(images, bboxes, bbox_labels):
@@ -88,59 +90,66 @@ class Trainer(object):
 
     def prepare_tf_summary(self, features, predictions, max_display=3):
         all_anchors = self.generate_anchors()
-        # batch_size = self.train_cfg.batch_size
-        # images = tf.cast(features['images'], tf.uint8)
-        # images = tf.split(
-        #     images,
-        #     num_or_size_splits=batch_size,
-        #     axis=0)
-        #
-        # bbox_clf_logits = predictions['bbox_clf_logits']
-        # bbox_probs = tf.nn.softmax(bbox_clf_logits)
-        # bbox_probs = tf.split(
-        #     tf.squeeze(bbox_probs),
-        #     num_or_size_splits=batch_size,
-        #     axis=0)
-        # bbox_regs = tf.split(
-        #     predictions['bbox_regs'],
-        #     num_or_size_splits=batch_size,
-        #     axis=0)
-        # out_images = []
-        #
-        # for i in range(max_display):
-        #     indices_ = tf.squeeze(tf.where(
-        #         tf.greater(bbox_probs[i][:, 1:], 0.2)))
-        #     indices = indices_[0]
-        #     labels = indices_[1]
-        #
-        #     def _draw_bboxes():
-        #         img = tf.squeeze(images[i])
-        #         bboxes = tf.gather(bbox_regs[i], indices)
-        #         # bboxes = tf.zeros_like(bboxes)
-        #         anchors = tf.gather(all_anchors, indices)
-        #         bboxes = bbox_decode(
-        #             bboxes, anchors, self.model_cfg.scale_factors)
-        #         # bboxes = tf.expand_dims(bboxes, axis=0)
-        #         scores = tf.gather(bbox_probs[i], indices)
-        #         selected_indices = tf.image.non_max_suppression(
-        #             bboxes, scores,
-        #             max_output_size=10,
-        #             iou_threshold=0.5)
-        #         bboxes = tf.gather(bboxes, selected_indices)
-        #         out_img = tf.py_func(vis.visualize_bboxes_on_image,
-        #                              [img, bboxes], tf.uint8)
-        #         return tf.expand_dims(out_img, axis=0)
-        #         # return tf.image.draw_bounding_boxes(
-        #         #    images[i], bboxes)
-        #
-        #     out_image = tf.cond(
-        #         tf.greater(tf.rank(indices), 0),
-        #         true_fn=_draw_bboxes,
-        #         false_fn=lambda: images[i])
-        #     out_images.append(out_image)
-        #
-        # out_images = tf.concat(out_images, axis=0)
-        # tf.summary.image('bboxes', out_images, max_display)
+        batch_size = self.train_cfg.batch_size
+        images = tf.cast(features['images'], tf.uint8)
+        images = tf.split(
+            images,
+            num_or_size_splits=batch_size,
+            axis=0)
+
+        bbox_clf_logits = predictions['bbox_clf_logits']
+        bbox_probs = tf.nn.softmax(bbox_clf_logits)
+        bbox_probs = tf.split(
+            tf.squeeze(bbox_probs),
+            num_or_size_splits=batch_size,
+            axis=0)
+        bbox_regs = tf.split(
+            predictions['bbox_regs'],
+            num_or_size_splits=batch_size,
+            axis=0)
+        out_images = []
+
+        for i in range(max_display):
+            obj_prob = 1. - bbox_probs[i][:, 0]
+            indices = tf.squeeze(tf.where(
+                tf.greater(obj_prob, 0.5)))
+
+            def _draw_bboxes():
+                img = tf.squeeze(images[i])
+                bboxes = tf.gather(bbox_regs[i], indices)
+                class_probs = tf.gather(bbox_probs[i], indices)
+                # bboxes = tf.zeros_like(bboxes)
+                anchors = tf.gather(all_anchors, indices)
+                bboxes = bbox_decode(
+                    bboxes, anchors, self.model_cfg.scale_factors)
+                # bboxes = tf.expand_dims(bboxes, axis=0)
+                scores = tf.gather(obj_prob, indices)
+                selected_indices = tf.image.non_max_suppression(
+                    bboxes, scores,
+                    max_output_size=10,
+                    iou_threshold=0.5)
+                bboxes = tf.gather(bboxes, selected_indices)
+                class_probs = tf.gather(class_probs, selected_indices)
+                top_probs, top_classes = tf.nn.top_k(class_probs, 3)
+                vis_fn = functools.partial(
+                    vis.visualize_bboxes_on_image,
+                    class_labels = self.labels
+                )
+                out_img = tf.py_func(
+                    vis_fn,
+                    [img, bboxes, top_classes, top_probs], tf.uint8)
+                return tf.expand_dims(out_img, axis=0)
+                # return tf.image.draw_bounding_boxes(
+                #    images[i], bboxes)
+
+            out_image = tf.cond(
+                tf.greater(tf.rank(indices), 0),
+                true_fn=_draw_bboxes,
+                false_fn=lambda: images[i])
+            out_images.append(out_image)
+
+        out_images = tf.concat(out_images, axis=0)
+        tf.summary.image('bboxes', out_images, max_display)
 
     def train(self):
         """run training experiment"""
