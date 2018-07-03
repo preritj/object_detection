@@ -32,13 +32,14 @@ class Trainer(object):
         self.train_cfg = cfg['train_config']
         self.model_cfg = cfg['model_config']
         self.infer_cfg = cfg['infer_config']
+        self.data_reader = ObjectDataReader(self.data_cfg)
+        self.labels = self.data_reader.product_names
         self.hparams = tf.contrib.training.HParams(
             **self.model_cfg.__dict__,
-            num_classes=len(self.data_cfg.category) + 1)
+            num_classes=len(self.labels))
         self.gpu_device = '/gpu:0'
         self.cpu_device = '/cpu:0'
         self.param_server_device = '/gpu:0'
-        self.labels = None
 
     def generate_anchors(self):
         all_anchors = []
@@ -62,9 +63,9 @@ class Trainer(object):
         train_cfg = self.train_cfg
         anchors = self.generate_anchors()
         # num_keypoints = len(train_cfg.train_keypoints)
-        data_reader = ObjectDataReader(self.data_cfg)
-        self.labels = data_reader.product_names
-        dataset = data_reader.read_data(train_cfg)
+        # data_reader = ObjectDataReader(self.data_cfg)
+        # self.labels = data_reader.product_names
+        dataset = self.data_reader.read_data(train_cfg)
 
         def map_fn(images, bboxes, bbox_labels):
             features = {'images': images}
@@ -127,13 +128,13 @@ class Trainer(object):
                 selected_indices = tf.image.non_max_suppression(
                     bboxes, scores,
                     max_output_size=10,
-                    iou_threshold=0.5)
+                    iou_threshold=0.7)
                 bboxes = tf.gather(bboxes, selected_indices)
                 class_probs = tf.gather(class_probs, selected_indices)
                 top_probs, top_classes = tf.nn.top_k(class_probs, 3)
                 vis_fn = functools.partial(
                     vis.visualize_bboxes_on_image,
-                    class_labels = self.labels
+                    class_labels=self.labels
                 )
                 out_img = tf.py_func(
                     vis_fn,
@@ -371,7 +372,7 @@ class Trainer(object):
         model, output_nodes = None, None
         model_name = self.hparams.model_name
         print("Using model ", model_name)
-        if model_name == 'mobilenet_pose':
+        if model_name == 'mobilenet_obj':
             model = MobilenetPose(self.hparams)
         else:
             NotImplementedError("{} not implemented".format(model_name))
@@ -384,13 +385,11 @@ class Trainer(object):
             # Call the eval rewrite which rewrites the graph in-place with
             # FakeQuantization nodes and fold batchnorm for eval.
             tf.contrib.quantize.create_eval_graph()
-        heatmaps = tf.nn.sigmoid(predictions['heatmaps'], name='heatmaps')
-        vecmaps = tf.identity(predictions['vecmaps'], name='vecmaps')
         bbox_clf_logits = predictions['bbox_clf_logits']
         bbox_classes = tf.nn.softmax(bbox_clf_logits, name='bbox_classes')
         bbox_regs = tf.identity(predictions['bbox_regs'], name='bbox_regs')
 
-        output_nodes = ['heatmaps', 'vecmaps', 'bbox_classes', 'bbox_regs']
+        output_nodes = ['bbox_classes', 'bbox_regs']
 
         for n in tf.get_default_graph().as_graph_def().node:
             print(n.name)
@@ -432,5 +431,5 @@ if __name__ == '__main__':
     assert os.path.exists(config_file), \
         "{} not found".format(config_file)
     trainer = Trainer(config_file)
-    trainer.train()
-    # trainer.freeze_model()
+    # trainer.train()
+    trainer.freeze_model()

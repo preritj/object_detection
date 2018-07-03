@@ -2,52 +2,15 @@
 # data parameters
 ###########################################
 --- !data
-bkg_data_dir: /media/storage/datasets/products/Background
-obj_data_dir: /media/storage/datasets/products/Lab
-n_items_min: 4
-n_items_max: 6
 image_shape: [320, 320]
 
-
-product_dims:
-  chips: [14, 6, 19]
-  bar1: [4, 3, 17]
-  bar2: [7, 3, 14]
-  can: [7, 7, 12]
-
-category:
-  Kettle chips: chips
-  Clif Bar Oatmeal Rasin Walnut: bar2
-  Doritos: chips
-  KIND NUTS and SPICES 1: bar1
-  La Croix Orange: can
-  Lays Sour Cream: chips
-  La Croix Pure: can
-  SANPELLEGRINO: can
-  ALMONDJOY: bar1
-  Clif Bar Blueberry Crisp: bar2
-  Cheetos Crunchy: chips
-  cheez it cheddar jack: chips
-  Coce classic: can
-  Nut Thins SRIRACHA: chips
-  Sprite: can
-  Fritos: chips
-  Karamucho: chips
-  Haribo: bar2
-  Lays Barbecue: chips
-  Nutter Butter Bites: chips
-  La Croix Lime: can
-  Clif Bar Chocolate Chip: bar2
-  Lays Classic: chips
-  Coce Diet: can
-  Coce zero: can
-  Doritos Cool Ranch: chips
-  Clif Bar Crunchy Peanut Butter: bar2
-  Clif Bar Chocolate Brownie: bar2
-  M&M: bar2
-  sprite zero: can
-
-
+datasets:
+  - name: ava
+    data_dir: /media/storage/datasets/products/TrainData
+    train_files: "train_data/*/train.txt"
+    tfrecord_files: tfrecords/ava*.records
+    weight: 1.
+    overwrite_tfrecord: false
 
 ###########################################
 # training parameters
@@ -58,12 +21,16 @@ model_dir: './models'
 num_epochs: 0
 learning_rate: 0.001
 learning_rate_decay:
-  decay_steps: 3000
-  decay_rate: 0.97
+  decay_steps: 2000
+  decay_rate: 0.96
 
 batch_size: 32
 shuffle: true
-prefetch_size: 64
+
+augmentation:
+  random_rotate: true
+  random_brightness: true
+  random_contrast: true
 
 optimizer:
   name: adam
@@ -72,9 +39,16 @@ optimizer:
     beta2: 0.999
     epsilon: 1e-8
 
+filenames_shuffle_buffer_size: 100
 num_parallel_map_calls: 12  # ~ num of CPU cores or less
-bbox_clf_weight: 5.
-bbox_reg_weight: 10.
+num_readers: 32
+read_block_length: 64
+shuffle_buffer_size: 4096
+prefetch_size: 64  # ~ 2 x batch-size
+
+
+bbox_clf_weight: 1.
+bbox_reg_weight: 1.
 
 quantize: False
 
@@ -91,11 +65,11 @@ depth_multiplier: 1.
 min_depth: 8
 
 # in top-down format
-base_anchor_sizes: [80, 160]
+base_anchor_sizes: [64, 128]
 anchor_strides: [16, 32]
 
-anchor_scales: [1., 1.2, 1.4, 1.6, 1.8]
-anchor_ratios: [.33, .5, 1., 2., 3.]
+anchor_scales: [1., 1.2599, 1.5874]
+anchor_ratios: [.5, 1., 2.]
 
 unmatched_threshold: 0.3
 matched_threshold: 0.7
@@ -135,7 +109,7 @@ out_stride: 8
 # Example:
 #   [320, 569] for lab videos
 #   [456, 800] for Walmart videos
-resize_shape: [320, 426]
+resize_shape: [320, 320]
 
 # overlapping patches are encouraged
 # for more robust prediction near edge of patches
@@ -155,7 +129,8 @@ images: /media/easystore/TrainData/Lab/April20/Recording_44/20180420_*.jpg
 
 video: /media/easystore/TrainData/Lab/April20/Recording_44/20180420_0000000.avi
 
-camera: http://root:123456@192.168.1.13/mjpg/video.mjpg
+# camera: http://root:123456@192.168.1.24/mjpg/video.mjpg
+camera: http://root:amrelirox@192.168.1.24/mjpg/video.mjpg
 
-display_bbox: false
+display_bbox: true
 

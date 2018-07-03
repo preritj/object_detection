@@ -4,6 +4,8 @@
 .ipynb_checkpoints/
 models/*
 !models/latest
+synthetic_data_utils/*.ipynb
+synthetic_data_utils/.ipynb*
 __pycache__/
 */__pycache__/
 

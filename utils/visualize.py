@@ -8,7 +8,7 @@ import PIL.ImageDraw as ImageDraw
 def visualize_bboxes_on_image(image, boxes, top_classes,
                               top_probs, class_labels):
     image_pil = Image.fromarray(image)
-    for box, top_class in zip(boxes, top_classes):
+    for box, top_prob, top_class in zip(boxes, top_probs, top_classes):
         draw = ImageDraw.Draw(image_pil)
         ymin, xmin, ymax, xmax = box
         im_width, im_height = image_pil.size
@@ -16,9 +16,11 @@ def visualize_bboxes_on_image(image, boxes, top_classes,
                                     xmax * im_width,
                                     ymin * im_height,
                                     ymax * im_height)
+        if (top_class[0] == 0) or (top_prob[0] < 0.4):
+            continue
         draw.line([(left, top), (left, bottom), (right, bottom),
                    (right, top), (left, top)], width=2, fill='red')
-        draw.text((left, top), class_labels[top_class],
+        draw.text((left, top), class_labels[top_class[0]],
                   (255, 255, 255))
     np.copyto(image, np.array(image_pil))
     return image

@@ -35,7 +35,7 @@ class MobilenetPose(Model):
         """Image preprocessing"""
         h, w = self.cfg.input_shape
         inputs = tf.reshape(inputs, [-1, h, w, 3])
-        return 2.0 * inputs - 1.0
+        return 2.0 * tf.to_float(inputs) / 255. - 1.0
 
     def build_net(self, preprocessed_inputs, is_training=False):
         image_features = self.encoder(preprocessed_inputs, is_training=is_training)

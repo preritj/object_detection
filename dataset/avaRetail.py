@@ -1,90 +1,44 @@
 from collections import defaultdict
 import numpy as np
 import os
+import xml.etree.ElementTree as ET
+from glob import glob
+import cv2
+import matplotlib.pyplot as plt
 from PIL import Image
 from tqdm import tqdm
-from dataset.object_data import PoseData
+from dataset.object_data import ObjectData
 
 
-class AVAretail(PoseData):
-    def __init__(self, pose_cfg, image_dir, annotation_files=None,
-                 img_shape=None):
-        self.track_ids = defaultdict(list)
-        super().__init__(pose_cfg, image_dir, annotation_files,
-                         img_shape)
+class AVAretail(ObjectData):
+    def __init__(self, cfg, data_dir, train_files):
+        self.cfg = cfg
+        super().__init__(cfg, data_dir, train_files)
 
     def _build_dataset(self, dataset):
-        for i, annotations in tqdm(enumerate(dataset)):
+        data_dir = os.path.join(self.data_dir, "")
+        for i, data in enumerate(dataset.items()):
             img_id = i
-            img_name = annotations['FileName']
-            img_path = os.path.join(self.image_dir, img_name)
-            if not os.path.exists(img_path):
-                print("Warning: {} does not exist".format(img_path))
-            if self.static_img_shape is None:
-                im = Image.open(img_path)
-                width, height = im.size
-            else:
-                width, height = list(self.static_img_shape)[:2]
-            self.imgs[img_id] = {'filename': img_name,
-                                 'shape': [height, width]}
-            persons = annotations['Persons']
-            labels = annotations['Labels']
-            ignore_patches = []
-            if 'Crowd' in labels.keys():
-                for crowd in labels['Crowd']:
-                    ymin, xmin, ymax, xmax = crowd['Bbox']
-                    patch_pts = [xmin, ymin,
-                                 xmax, ymin,
-                                 xmax, ymax,
-                                 xmin, ymax]
-                    ignore_patches.append(patch_pts)
-            if len(persons) == 0:
-                continue
-            all_keypoints = [person['Keypoints'] for person in persons
-                             if 'Keypoints' in person.keys()]
-            if len(all_keypoints) == 0:
-                continue
-            for person in persons:
-                bbox = None
-                if 'Bbox' in person.keys():
-                    xmin, ymin, w, h = person['Bbox']
-                    xmax = int(min(xmin + w, width - 1))
-                    ymax = int(min(ymin + h, height - 1))
-                    xmin, ymin = int(max(0, xmin)), int(max(0, ymin))
-                    bbox = [ymin, xmin, ymax, xmax]
-                    # add track ID if present
-                    if 'TrackId' in person.keys():
-                        trackid = person['TrackId']
-                        if trackid > 0:
-                            self.track_ids[trackid].append(img_id)
-                if (('Keypoints' not in person.keys())
-                        or (person['Keypoints'] is None)):
-                    # make mask using bbox
-                    if bbox is not None:
-                        ymin, xmin, ymax, xmax = bbox
-                        patch_pts = [xmin, ymin,
-                                     xmax, ymin,
-                                     xmax, ymax,
-                                     xmin, ymax]
-                        ignore_patches.append(patch_pts)
-                    continue
-                keypoints = np.array(person['Keypoints'])
-                if bbox is None:
-                    xmin, ymin = np.min(keypoints[:, :2], axis=0)
-                    xmax, ymax = np.max(keypoints[:, :2], axis=0)
-                    xmax = int(min(xmax, width - 1))
-                    ymax = int(min(ymax, height - 1))
-                    xmin, ymin = int(max(0, xmin)), int(max(0, ymin))
-                    bbox = [ymin, xmin, ymax, xmax]
-                self.anns[img_id].append({'keypoints': keypoints,
-                                          'bbox': bbox})
-            if len(ignore_patches) > 0:
-                self.masks[img_id].append({'ignore_region': ignore_patches})
+            img_file, ann_file = data
+            img_file = img_file.split(data_dir)[1]
+            h, w = self.cfg.image_shape
+            self.imgs[img_id] = {'filename': img_file,
+                                 'shape': [h, w]}
+            tree = ET.parse(ann_file)
+            root = tree.getroot()
+            for obj in root:
+                obj_name = obj.find('name').text
+                label = self.product_labels[obj_name]
+                bbox = obj.find('bndbox')
+                x1, x2, y1, y2 = [int(bbox[i].text) for i in range(4)]
+                bbox = [y1 / h, x1 / w, y2 / h, x2 / w]
+                self.anns[img_id].append({'bbox': bbox,
+                                          'label': label})
 
     def create_index(self):
         # create index
         print('creating index...')
-        self.imgs, self.anns, self.masks = {}, defaultdict(list), defaultdict(list)
+        self.imgs, self.anns = {}, defaultdict(list)
 
         for dataset in self.datasets:
             self._build_dataset(dataset)

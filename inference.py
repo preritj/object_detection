@@ -5,6 +5,9 @@ import os
 import time
 import argparse
 from glob import glob
+import functools
+import utils.visualize as vis
+from dataset.data_reader import ObjectDataReader
 import urllib.request
 import requests
 from requests.auth import HTTPBasicAuth
@@ -21,118 +24,27 @@ class Inference(object):
         self.model_cfg = cfg['model_config']
         self.infer_cfg = cfg['infer_config']
         self.col_channels = 3  # assume RGB channels only
-        self.patch_h, self.patch_w = self.infer_cfg.network_input_shape
         self.out_stride = self.infer_cfg.out_stride
         self.frozen_model_file = os.path.join(
             self.infer_cfg.model_dir, self.infer_cfg.frozen_model)
         self.img_h, self.img_w = self.infer_cfg.resize_shape
-        self.strides_rows, self.strides_cols = self.infer_cfg.strides
-        self.n_rows = int(np.ceil(self.img_h / self.patch_h))
-        self.n_cols = int(np.ceil(self.img_w / self.patch_w))
+        self.data_reader = ObjectDataReader(self.data_cfg)
+        self.labels = self.data_reader.product_names
         self.anchors = self.generate_anchors()
-        with tf.device('/cpu:0'):
-            self.preprocess_tensors = self.preprocess_graph()
-        with tf.device('/gpu:0'):
-            self.network_tensors = self.network_forward_pass()
-        with tf.device('/cpu:0'):
-            self.postprocess_tensors = self.postprocess_graph()
+        self.network_tensors = self.network_forward_pass()
 
     def preprocess_image(self, image):
         # tensorflow expects RGB!
+        image = image[:, :, :3]
         image = image[:, :, ::-1]
         # cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = cv2.resize(image, (self.img_w, self.img_h))
+        h, w = image.shape[:2]
+        y1, y2 = int(h * 0.167), int(h * 0.696)
+        x1, x2 = int(w * 0.146), int(w * 0.542)
+        image = image[y1:y2, x1:x2]
+        image = cv2.resize(image, (self.img_w, self.img_h),
+                           interpolation=cv2.INTER_AREA)
         return image
-
-    def create_patches(self, image):
-        """tensorflow implementation for patch extraction"""
-        images = tf.expand_dims(image, axis=0)
-        patches = tf.extract_image_patches(
-            images,
-            ksizes=[1, self.patch_h, self.patch_w, 1],
-            strides=[1, self.strides_rows, self.strides_cols, 1],
-            rates=[1, 1, 1, 1],
-            padding='VALID',
-            name=None
-        )
-        patches = tf.reshape(
-            patches,
-            (self.n_rows * self.n_cols, self.patch_h,
-             self.patch_w, self.col_channels))
-        return patches
-
-    def create_patches_v2(self, image):
-        """custom implementation of patch extraction:
-        [currently not used]
-        NOTE: run speed similar to create_patches"""
-        patches_top = np.repeat(
-            self.strides_rows * np.arange(self.n_rows), self.n_cols)
-        patches_left = np.tile(
-            self.strides_cols * np.arange(self.n_cols), self.n_rows)
-
-        def _extract_patch(patches_top_left_):
-            y, x = patches_top_left_
-            return image[y:y + self.patch_h, x:x + self.patch_w]
-
-        patches = tf.map_fn(_extract_patch,
-                            elems=(patches_top, patches_left),
-                            back_prop=False,
-                            parallel_iterations=12,  # CPU cores?
-                            dtype=tf.float32)
-        return patches
-
-    def stitch_to_right(self, patch_left, patch_right):
-        """Creates heatmap by stitching patch_right on to patch_left
-        Overlap region heatmap is the weighted sum of two patches"""
-        overlap_cols = int(
-            (self.patch_w - self.strides_cols) / self.out_stride)
-        left, left_overlap = tf.split(
-            patch_left, [-1, overlap_cols], axis=1)
-        right_overlap, right = tf.split(
-            patch_right, [overlap_cols, -1], axis=1)
-        weights = tf.reshape(
-            tf.range(overlap_cols, dtype=tf.float32),
-            shape=(1, overlap_cols, 1))
-        overlap = (left_overlap * (overlap_cols - 1. - weights)
-                   + right_overlap * weights) / overlap_cols
-        out = tf.concat([left, overlap, right], axis=1)
-        return out
-
-    def stitch_to_bottom(self, patch_top, patch_bottom):
-        """Creates heatmap by stitching patch_bottom on to patch_top
-        Overlap region heatmap is the weighted sum of two patches"""
-        overlap_rows = int(
-            (self.patch_h - self.strides_rows) / self.out_stride)
-        top, top_overlap = tf.split(
-            patch_top, [-1, overlap_rows], axis=0)
-        bottom_overlap, bottom = tf.split(
-            patch_bottom, [overlap_rows, -1], axis=0)
-        weights = tf.reshape(
-            tf.range(overlap_rows, dtype=tf.float32),
-            shape=(overlap_rows, 1, 1))
-        overlap = (top_overlap * (overlap_rows - 1. - weights)
-                   + bottom_overlap * weights) / overlap_rows
-        out = tf.concat([top, overlap, bottom], axis=0)
-        return out
-
-    def stitch_patches(self, patches):
-        rows = tf.split(
-            patches, num_or_size_splits=self.n_rows, axis=0)
-        stitched_rows = []
-        for i, row in enumerate(rows):
-            stitched_row = patches[i * self.n_cols]
-            for j in range(1, self.n_cols):
-                stitched_row = self.stitch_to_right(
-                    stitched_row, patches[i * self.n_cols + j])
-            stitched_rows.append(stitched_row)
-
-        out = stitched_rows[0]
-        for i in range(1, self.n_rows):
-            out = self.stitch_to_bottom(out, stitched_rows[i])
-        out = tf.expand_dims(out, axis=0)
-        out = non_max_suppression(out, window_size=3)
-        out = tf.squeeze(out)
-        return out
 
     def generate_anchors(self):
         all_anchors = []
@@ -150,79 +62,63 @@ class Inference(object):
             all_anchors.append(anchors)
         return tf.concat(all_anchors, axis=0)
 
-    def get_bboxes(self, bbox_probs, bbox_regs):
-        # TODO : come up with a strategy to stitch patches for bboxes
-        patches_top = np.repeat(
-            self.strides_rows * np.arange(self.n_rows), self.n_cols)
-        patches_left = np.tile(
-            self.strides_cols * np.arange(self.n_cols), self.n_rows)
-        n_patches = self.n_rows * self.n_cols
-        _, bbox_probs = tf.split(
-            bbox_probs,
-            num_or_size_splits=2,
-            axis=1)
+    def draw_bboxes_on_images(self, images, bbox_probs, bbox_regs):
+        batch_size = 1
+        images = tf.cast(images, tf.uint8)
+        images = tf.split(
+            images,
+            num_or_size_splits=batch_size,
+            axis=0)
         bbox_probs = tf.split(
             tf.squeeze(bbox_probs),
-            num_or_size_splits=n_patches,
+            num_or_size_splits=batch_size,
             axis=0)
         bbox_regs = tf.split(
             bbox_regs,
-            num_or_size_splits=n_patches,
+            num_or_size_splits=batch_size,
             axis=0)
-        bboxes, scores = [], []
+        out_images = []
 
-        for i in range(n_patches):
+        for i in range(batch_size):
+            obj_prob = 1. - bbox_probs[i][:, 0]
             indices = tf.squeeze(tf.where(
-                tf.greater(bbox_probs[i], 0.5)))
+                tf.greater(obj_prob, 0.5)))
 
-            def _get_bboxes():
-                boxes = tf.gather(bbox_regs[i], indices)
+            def _draw_bboxes():
+                img = tf.squeeze(images[i])
+                bboxes = tf.gather(bbox_regs[i], indices)
+                class_probs = tf.gather(bbox_probs[i], indices)
+                # bboxes = tf.zeros_like(bboxes)
                 anchors = tf.gather(self.anchors, indices)
-                boxes = bbox_decode(
-                    boxes, anchors, self.model_cfg.scale_factors)
-                scores_ = tf.gather(bbox_probs[i], indices)
-                scores_ = tf.expand_dims(scores_, axis=1)
-                boxes *= tf.constant(
-                    [self.patch_h,
-                     self.patch_w,
-                     self.patch_h,
-                     self.patch_w],
-                    dtype=tf.float32)
-                delta = tf.constant(
-                    [patches_top[i],
-                     patches_left[i],
-                     patches_top[i],
-                     patches_left[i]],
-                    dtype=tf.float32)
-                boxes += delta
-                return tf.concat([boxes, scores_], axis=1)
+                bboxes = bbox_decode(
+                    bboxes, anchors, self.model_cfg.scale_factors)
+                # bboxes = tf.expand_dims(bboxes, axis=0)
+                scores = tf.gather(obj_prob, indices)
+                selected_indices = tf.image.non_max_suppression(
+                    bboxes, scores,
+                    max_output_size=10,
+                    iou_threshold=0.7)
+                bboxes = tf.gather(bboxes, selected_indices)
+                class_probs = tf.gather(class_probs, selected_indices)
+                top_probs, top_classes = tf.nn.top_k(class_probs, 1)
+                vis_fn = functools.partial(
+                    vis.visualize_bboxes_on_image,
+                    class_labels=self.labels
+                )
+                out_img = tf.py_func(
+                    vis_fn,
+                    [img, bboxes, top_classes, top_probs], tf.uint8)
+                return tf.expand_dims(out_img, axis=0)
+                # return tf.image.draw_bounding_boxes(
+                #    images[i], bboxes)
 
-            def _default_bboxes():
-                return tf.constant([[-1, -1, -1, -1, 0]],
-                                   tf.float32)
-
-            bboxes_scores = tf.cond(
+            out_image = tf.cond(
                 tf.greater(tf.rank(indices), 0),
-                true_fn=_get_bboxes,
-                false_fn=_default_bboxes)
-            bboxes.append(bboxes_scores[:, :4])
-            scores.append(bboxes_scores[:, -1])
-        bboxes = tf.concat(bboxes, axis=0)
-        scores = tf.concat(scores, axis=0)
-        selected_indices = tf.image.non_max_suppression(
-            bboxes, scores,
-            max_output_size=10,
-            iou_threshold=0.7)
-        return tf.gather(bboxes, selected_indices)
-
-    def preprocess_graph(self):
-        """Creates graph for preprocessing"""
-        image = tf.placeholder(
-            tf.float32,
-            shape=[self.img_h, self.img_w, self.col_channels])
-        patches = self.create_patches(image)
-        return {'image': image,
-                'patches': patches}
+                true_fn=_draw_bboxes,
+                false_fn=lambda: images[i])
+            out_images.append(out_image)
+        out_images = tf.concat(out_images, axis=0)
+        return out_images
 
     def network_forward_pass(self):
         """Creates graph for network forward pass"""
@@ -232,80 +128,40 @@ class Inference(object):
 
         with tf.get_default_graph().as_default() as g:
             tf.import_graph_def(graph_def)
-        patches = g.get_tensor_by_name('import/images:0')
-        heatmaps = g.get_tensor_by_name('import/heatmaps:0')
-        vecmaps = g.get_tensor_by_name('import/vecmaps:0')
+        images = g.get_tensor_by_name('import/images:0')
         bbox_classes = g.get_tensor_by_name('import/bbox_classes:0')
         bbox_regs = g.get_tensor_by_name('import/bbox_regs:0')
-        return {'patches': patches,
-                'heatmaps': heatmaps,
-                'vecmaps': vecmaps,
-                'bbox_classes': bbox_classes,
-                'bbox_regs': bbox_regs}
+        with tf.device('/cpu:0'):
+            bbox_on_images = self.draw_bboxes_on_images(
+            images, bbox_classes, bbox_regs)
+        return {'images': images,
+                'bbox_on_images': bbox_on_images}
 
-    def postprocess_graph(self):
-        """Creates graph for post processing"""
-        heatmaps = tf.placeholder(
-            tf.float32,
-            shape=[self.n_rows * self.n_cols,
-                   self.patch_h / self.out_stride,
-                   self.patch_w / self.out_stride,
-                   self.col_channels])
-        bbox_probs = tf.placeholder(tf.float32, shape=[None, 2])
-        bbox_regs = tf.placeholder(tf.float32, shape=[None, 4])
-        keypoints = self.stitch_patches(heatmaps)
-        bboxes = self.get_bboxes(bbox_probs, bbox_regs)
-        return {'heatmaps': heatmaps,
-                'bbox_probs': bbox_probs,
-                'bbox_regs': bbox_regs,
-                'keypoints': keypoints,
-                'bboxes': bboxes}
-
-    def _run_inference(self, sess, image):
+    def _run_inference(self, sess, images):
         t0 = time.time()
-        patches = sess.run(
-            self.preprocess_tensors['patches'],
-            feed_dict={self.preprocess_tensors['image']: image})
         t1 = time.time()
 
-        heatmaps, vecmaps, bbox_probs, bbox_regs = sess.run(
-            [self.network_tensors['heatmaps'],
-             self.network_tensors['vecmaps'],
-             self.network_tensors['bbox_classes'],
-             self.network_tensors['bbox_regs']],
-            feed_dict={self.network_tensors['patches']: patches})
+        bbox_on_images = sess.run(
+            self.network_tensors['bbox_on_images'],
+            feed_dict={self.network_tensors['images']: images})
         t2 = time.time()
-
-        feed_dict = {
-            self.postprocess_tensors['bbox_probs']: bbox_probs,
-            self.postprocess_tensors['bbox_regs']: bbox_regs
-        }
-        bboxes = sess.run(
-            self.postprocess_tensors['bboxes'], feed_dict=feed_dict)
-
-        out = sess.run(
-            self.postprocess_tensors['keypoints'],
-            feed_dict={self.postprocess_tensors['heatmaps']: heatmaps})
-        # some additional post-processing
-        threshold = 0.5
-        out[out > threshold] = 1.
-        out[out < threshold] = 0.
-        out = (255. * out).astype(np.uint8)
         t3 = time.time()
-        return out, bboxes, [t0, t1, t2, t3]
+        return bbox_on_images, [t0, t1, t2, t3]
 
-    def display_output(self, image, out, bboxes):
-        out = cv2.resize(out, (self.img_w, self.img_h))
-        if self.infer_cfg.display_bbox:
-            for box in bboxes:
-                if len(box) == 0:
-                    continue
-                ymin, xmin, ymax, xmax = box
-                out = cv2.rectangle(
-                    out, (xmin, ymin), (xmax, ymax), (0, 0, 255), 1)
-        # back to BGR for opencv display
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        out = cv2.addWeighted(image, 0.4, out, 0.6, 0)
+    def display_output(self, bbox_on_images):
+        out = bbox_on_images[0]
+        out = cv2.cvtColor(out, cv2.COLOR_RGB2BGR)
+        # out = cv2.resize(out, (self.img_w, self.img_h))
+        # if self.infer_cfg.display_bbox:
+        #     for box in bboxes:
+        #         if len(box) == 0:
+        #             continue
+        #         ymin, xmin, ymax, xmax = box
+        #         out = cv2.rectangle(
+        #             out, (xmin, ymin), (xmax, ymax), (0, 0, 255), 1)
+        # # back to BGR for opencv display
+        # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        # out = cv2.addWeighted(image, 0.4, out, 0.6, 0)
         cv2.imshow('out', out)
         if cv2.waitKey(1) == 27:  # Esc key to stop
             return 0
@@ -348,10 +204,10 @@ class Inference(object):
                 ret, image = cap.read()
                 if not ret:
                     break
-                image = self.preprocess_image(image)
-                out, bboxes, t = self._run_inference(sess, image)
+                images = np.array([self.preprocess_image(image)])
+                bbox_on_images, t = self._run_inference(sess, images)
                 stats.update(t)
-                if not self.display_output(image, out, bboxes):
+                if not self.display_output(bbox_on_images):
                     break
             cap.release()
         else:

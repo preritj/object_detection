@@ -45,6 +45,26 @@ def flip_left_right_bboxes(bboxes):
     return tf.concat([ymin, 1. - xmax, ymax, 1. - xmin], 1)
 
 
+def rotate_bboxes(bboxes, k=1):
+    """rotate in multiples of 90 degrees"""
+    y1, x1, y2, x2 = tf.split(value=bboxes, num_or_size_splits=4,
+                              axis=1)
+    if k == 3:
+        return tf.concat([x1, 1. - y2, x2, 1. - y1], 1)
+    elif k == 2:
+        return tf.concat([1. - y2, 1. - x2, 1. - y1, 1. - x1], 1)
+    elif k == 1:
+        return tf.concat([1. - x2, y1, 1. - x1, y2], 1)
+
+
+def random_rotate(image, bboxes, labels):
+    k = np.random.randint(0, 4)
+    if k > 0:
+        image = tf.image.rot90(image, k)
+        bboxes = rotate_bboxes(bboxes, k)
+    return image, bboxes, labels
+
+
 def random_flip_left_right(img, keypoints, bboxes, mask,
                            flipped_keypoint_indices):
     random_var = random_int(2)
@@ -101,88 +121,19 @@ def prune_bboxes_keypoints(bboxes, keypoints, crop_box):
     return valid_bboxes, valid_keypoints
 
 
-def random_crop(image, keypoints, bboxes, mask,
-                crop_size=(224, 224), scale_range=(1.5, 4.)):
-    bboxes = tf.clip_by_value(
-        bboxes, clip_value_min=0.0, clip_value_max=1.0)
-    n_bboxes = tf.shape(bboxes)[0]
-    img_shape = tf.cast(tf.shape(image), tf.float32)
-    img_h, img_w = img_shape[0], img_shape[1]
-    random_bbox = tf.cond(
-        tf.greater(n_bboxes, 0),
-        true_fn=lambda: tf.random_shuffle(bboxes)[0],
-        false_fn=lambda: tf.constant([0., 0., 1., 1.]))
-    bbox_area = ((random_bbox[2] - random_bbox[0])
-                 * (random_bbox[3] - random_bbox[1]))
-    img_aspect_ratio = img_w / img_h
-    aspect_ratio = 1. * crop_size[1] / crop_size[0]
-    crop_aspect_ratio = tf.constant(aspect_ratio, tf.float32)
+def random_brightness(image, bboxes, labels):
+    image = tf.image.random_brightness(
+        image,
+        max_delta=0.1)
+    return image, bboxes, labels
 
-    def target_height_fn():
-        return tf.to_int32(tf.round(img_w / crop_aspect_ratio))
 
-    crop_h = tf.cond(img_aspect_ratio >= aspect_ratio,
-                     true_fn=lambda: tf.to_int32(img_h),
-                     false_fn=target_height_fn)
-
-    def target_width_fn():
-        return tf.to_int32(tf.round(img_h * crop_aspect_ratio))
-
-    crop_w = tf.cond(img_aspect_ratio <= aspect_ratio,
-                     true_fn=lambda: tf.to_int32(img_w),
-                     false_fn=target_width_fn)
-
-    max_crop_shape = tf.stack([crop_h, crop_w])
-
-    crop_area = 1. * crop_size[0] * crop_size[1]
-    scale_ratio = tf.sqrt(bbox_area * img_h * img_w / crop_area)
-
-    crop_size = tf.constant(list(crop_size), tf.float32)
-    # cap min scale at 0.5 to prevent bad resolution
-    scale_min = tf.maximum(scale_range[0] * scale_ratio, 0.5)
-    # max scale has to be greater than min scale (1.1 * min scale)
-    scale_max = tf.maximum(scale_range[1] * scale_ratio,
-                           1.1 * scale_min)
-    size_min = tf.minimum(max_crop_shape - 1,
-                          tf.to_int32(scale_min * crop_size))
-    size_max = tf.minimum(max_crop_shape,
-                          tf.to_int32(scale_max * crop_size))
-    crop_h = random_int(maxval=tf.to_int32(size_max[0]),
-                        minval=tf.to_int32(size_min[0]))
-    crop_w = tf.to_int32(aspect_ratio * tf.to_float(crop_h))
-    crop_shape = tf.stack([crop_h, crop_w])
-
-    bbox_min, bbox_max = random_bbox[:2], random_bbox[2:]
-    bbox_min = tf.cast(tf.round(bbox_min * img_shape[:2]), tf.int32)
-    bbox_max = tf.cast(tf.round(bbox_max * img_shape[:2]), tf.int32)
-    bbox_min = tf.maximum(bbox_min, 0)
-
-    offset_min = tf.maximum(0, bbox_max - crop_shape)
-    offset_max = tf.minimum(
-        tf.cast(img_shape[:2], tf.int32) - crop_shape + 1,
-        bbox_min + 1)
-    offset_min = tf.where(tf.less_equal(offset_max, offset_min),
-                          tf.constant([0, 0]),
-                          offset_min)
-
-    offset_h = random_int(maxval=offset_max[0], minval=offset_min[0])
-    offset_w = random_int(maxval=offset_max[1], minval=offset_min[1])
-
-    new_image = tf.image.crop_to_bounding_box(
-        image, offset_h, offset_w, crop_h, crop_w)
-    new_mask = tf.expand_dims(mask, 2)
-    new_mask = tf.image.crop_to_bounding_box(
-        new_mask, offset_h, offset_w, crop_h, crop_w)
-    new_mask = tf.squeeze(new_mask)
-    crop_box = tf.stack([
-        tf.to_float(offset_h) / img_h,
-        tf.to_float(offset_w) / img_w,
-        tf.to_float(offset_h + crop_h) / img_h,
-        tf.to_float(offset_w + crop_w) / img_w
-    ])
-    new_bboxes, new_keypoints = prune_bboxes_keypoints(
-        bboxes, keypoints, crop_box)
-    return new_image, new_keypoints, new_bboxes, new_mask
+def random_contrast(image, bboxes, labels):
+    image = tf.image.random_contrast(
+        image,
+        lower=0.9,
+        upper=1.1)
+    return image, bboxes, labels
 
 
 def resize(image, keypoints, bbox, mask,

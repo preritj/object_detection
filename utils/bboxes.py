@@ -87,7 +87,7 @@ def get_matches(gt_bboxes, gt_classes, pred_bboxes,
 
     gather_indices = matched_indices + 2
     dummy_bboxes = tf.zeros([2, 4])
-    dummy_classes = tf.zeros([2], dtype=tf.int32)
+    dummy_classes = tf.zeros([2], dtype=tf.int64)
     bboxes = tf.concat([dummy_bboxes, gt_bboxes], axis=0)
     classes = tf.concat([dummy_classes, gt_classes], axis=0)
     matched_gt_bboxes = tf.gather(bboxes, gather_indices)
