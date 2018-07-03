@@ -254,6 +254,22 @@ def PIL2array3C(img):
                     np.uint8).reshape(img.size[1], img.size[0], 3)
 
 
+def PIL2array4C(img_png):
+    """Converts a PIL image to NumPy Array
+
+    Args:
+        img(PIL Image): Input PIL image
+    Returns:
+        NumPy Array: Converted image
+        NumPy Array: Converted mask
+    """
+    img_mask =  np.array(img_png.getdata(), np.uint8).reshape(
+        img_png.size[1], img_png.size[0], 4)
+    img = img_mask[:, :, :3]
+    mask = img_mask[:, :, 3]
+    return img, mask
+
+
 def create_image_anno_wrapper(args, w=WIDTH, h=HEIGHT, scale_augment=False,
                               rotation_augment=False, blending_list=['none'],
                               dontocclude=False):
@@ -325,14 +341,14 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
         
         already_syn = [] if dontocclude else None
         for idx, obj in enumerate(all_objects):
-            foreground = Image.open(obj[0])
+            foreground = Image.open(obj[0], 'r').convert('RGBA')
             xmin, xmax, ymin, ymax = get_annotation_from_mask_file(get_mask_file(obj[0]))
             if xmin == -1 or ymin == -1 or xmax - xmin < MIN_WIDTH or ymax - ymin < MIN_HEIGHT:
                 continue
             foreground = foreground.crop((xmin, ymin, xmax, ymax))
             orig_w, orig_h = foreground.size
-            mask_file = get_mask_file(obj[0])
-            mask = Image.open(mask_file)
+            # mask_file = get_mask_file(obj[0])
+            mask = foreground.split()[3]
             mask = mask.crop((xmin, ymin, xmax, ymax))
             if INVERTED_MASK:
                 mask = Image.fromarray(255 - PIL2array1C(mask))
