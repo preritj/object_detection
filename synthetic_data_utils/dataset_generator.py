@@ -35,7 +35,7 @@ def randomAngle(kerneldim):
     """ 
     kernelCenter = int(math.floor(kerneldim/2))
     numDistinctLines = kernelCenter * 4
-    validLineAngles = np.linspace(0,180, numDistinctLines, endpoint = False)
+    validLineAngles = np.linspace(0,180, numDistinctLines, endpoint=False)
     angleIdx = np.random.randint(0, len(validLineAngles))
     return int(validLineAngles[angleIdx])
 
@@ -97,7 +97,7 @@ def get_list_of_images(root_dir, N=1):
     Returns:
         list: List of images(with paths) that will be put in the dataset
     """
-    img_list = glob.glob(os.path.join(root_dir, '*/*.jpg'))
+    img_list = glob.glob(os.path.join(root_dir, '*/*.png'))
     img_list_f = []
     for i in range(N):
         img_list_f = img_list_f + random.sample(img_list, len(img_list))
@@ -250,8 +250,14 @@ def PIL2array3C(img):
     Returns:
         NumPy Array: Converted image
     """
-    return np.array(img.getdata(),
-                    np.uint8).reshape(img.size[1], img.size[0], 3)
+    img_array = np.array(img.getdata(), np.uint8)
+    w, h = img.size
+    n_dims = img_array.ndim
+    if n_dims > 1:
+        return img_array.reshape(h, w, 3)
+    else:
+        img_array = img_array.reshape(h, w)
+        return np.stack(3 * [img_array], axis=2)
 
 
 def PIL2array4C(img_png):
@@ -309,7 +315,7 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
     all_objects = objects + distractor_objects
     while True:
         top = Element('annotation')
-        background = Image.open(bg_file)
+        background = Image.open(bg_file).convert('RGB')
         img_w, img_h = background.size
         aspect_r = img_w / img_h
         x0, y0 = 0, 0
@@ -334,14 +340,19 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
                 x0 = np.random.randint(0, img_w - new_w + 1)
                 y0 = np.random.randint(0, img_h - new_h + 1)
         background = background.crop((x0, y0, x0 + new_w, y0 + new_h))
-        background = background.resize((w, h), Image.ANTIALIAS)
+        w0, h0 = background.size
+        if w0 < w or h0 < h:
+            interp = Image.ANTIALIAS
+        else:
+            interp = Image.BILINEAR
+        background = background.resize((w, h), interp)
         backgrounds = []
         for i in range(len(blending_list)):
             backgrounds.append(background.copy())
         
         already_syn = [] if dontocclude else None
         for idx, obj in enumerate(all_objects):
-            foreground = Image.open(obj[0], 'r').convert('RGBA')
+            foreground = Image.open(obj[0])
             xmin, xmax, ymin, ymax = get_annotation_from_mask_file(get_mask_file(obj[0]))
             if xmin == -1 or ymin == -1 or xmax - xmin < MIN_WIDTH or ymax - ymin < MIN_HEIGHT:
                 continue
@@ -404,7 +415,8 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
                 elif blending_list[i] == 'poisson':
                     offset = (y, x)
                     img_mask = PIL2array1C(mask)
-                    img_src = PIL2array3C(foreground).astype(np.float64)
+                    img_src, _ = PIL2array4C(foreground)
+                    img_src = img_src.astype(np.float64)
                     img_target = PIL2array3C(backgrounds[i])
                     img_mask, img_src, offset_adj \
                         = create_mask(img_mask.astype(np.float64),
@@ -484,7 +496,7 @@ def gen_syn_data(img_files, labels, img_dir, anno_dir, scale_augment, rotation_a
         for distractor_label in distractor_labels:
             distractor_list += glob.glob(os.path.join(DISTRACTOR_DIR, distractor_label, DISTRACTOR_GLOB_STRING))
 
-        distractor_files = zip(distractor_list, len(distractor_list) * [None])
+        distractor_files = list(zip(distractor_list, len(distractor_list) * [None]))
         random.shuffle(distractor_files)
 
     idx = 0
@@ -503,7 +515,7 @@ def gen_syn_data(img_files, labels, img_dir, anno_dir, scale_augment, rotation_a
             n = min(random.randint(MIN_NO_OF_DISTRACTOR_OBJECTS, MAX_NO_OF_DISTRACTOR_OBJECTS), len(distractor_files))
             for i in range(n):
                 distractor_objects.append(random.choice(distractor_files))
-        print(distractor_objects, distractor_files)
+        # print(distractor_objects, distractor_files)
         idx += 1
         bg_file = random.choice(background_files)
         for blur in BLENDING_LIST:

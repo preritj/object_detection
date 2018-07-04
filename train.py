@@ -34,6 +34,19 @@ class Trainer(object):
         self.infer_cfg = cfg['infer_config']
         self.data_reader = ObjectDataReader(self.data_cfg)
         self.labels = self.data_reader.product_names
+        # label_codes = self.data_reader.product_names
+        # text_labels = {}
+        # with open(self.infer_cfg.products_csv, 'r') as f:
+        #     for line in f:
+        #         prod_id, prod_name = line.split(',')
+        #         prod_name = (prod_name.split('\n')[0]).strip()
+        #         try:
+        #             prod_id = int(prod_id)
+        #         except ValueError:
+        #             continue
+        #         text_labels[str(prod_id)] = prod_name
+        # for i, prod_id in label_codes.items():
+        #
         self.hparams = tf.contrib.training.HParams(
             **self.model_cfg.__dict__,
             num_classes=len(self.labels))
@@ -128,7 +141,7 @@ class Trainer(object):
                 selected_indices = tf.image.non_max_suppression(
                     bboxes, scores,
                     max_output_size=10,
-                    iou_threshold=0.7)
+                    iou_threshold=0.5)
                 bboxes = tf.gather(bboxes, selected_indices)
                 class_probs = tf.gather(class_probs, selected_indices)
                 top_probs, top_classes = tf.nn.top_k(class_probs, 3)
@@ -431,5 +444,5 @@ if __name__ == '__main__':
     assert os.path.exists(config_file), \
         "{} not found".format(config_file)
     trainer = Trainer(config_file)
-    # trainer.train()
-    trainer.freeze_model()
+    trainer.train()
+    # trainer.freeze_model()

@@ -2,15 +2,15 @@
 # data parameters
 ###########################################
 --- !data
-image_shape: [320, 320]
+image_shape: [384, 384]
 
 datasets:
   - name: ava
     data_dir: /media/storage/datasets/products/TrainData
     train_files: "train_data/*/train.txt"
-    tfrecord_files: tfrecords/ava*.records
+    tfrecord_files: tfrecords/*.records
     weight: 1.
-    overwrite_tfrecord: false
+    overwrite_tfrecord: true
 
 ###########################################
 # training parameters
@@ -21,8 +21,8 @@ model_dir: './models'
 num_epochs: 0
 learning_rate: 0.001
 learning_rate_decay:
-  decay_steps: 2000
-  decay_rate: 0.96
+  decay_steps: 3000
+  decay_rate: 0.98
 
 batch_size: 32
 shuffle: true
@@ -57,8 +57,8 @@ quantize: False
 ###########################################
 --- !model
 model_name: mobilenet_obj
-input_shape: [320, 320]
-output_shape: [40, 40]
+input_shape: [384, 384]
+output_shape: [48, 48]
 # output_stride: 8
 
 depth_multiplier: 1.
@@ -72,7 +72,7 @@ anchor_scales: [1., 1.2599, 1.5874]
 anchor_ratios: [.5, 1., 2.]
 
 unmatched_threshold: 0.3
-matched_threshold: 0.7
+matched_threshold: 0.6
 force_match_for_gt_bbox: true
 scale_factors: [10., 5.]
 
@@ -90,7 +90,8 @@ fpn_depth: 96
 --- !infer
 model_dir: models/latest
 frozen_model: frozen_model.pb
-network_input_shape: [320, 320]
+network_input_shape: [384, 384]
+products_csv: '/media/storage/datasets/products/products.csv'
 
 # out_stride determines the output shape of network
 # For example, if input image is 320 x 320
@@ -109,7 +110,7 @@ out_stride: 8
 # Example:
 #   [320, 569] for lab videos
 #   [456, 800] for Walmart videos
-resize_shape: [320, 320]
+resize_shape: [384, 384]
 
 # overlapping patches are encouraged
 # for more robust prediction near edge of patches

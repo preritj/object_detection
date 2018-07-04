@@ -39,8 +39,8 @@ class Inference(object):
         image = image[:, :, ::-1]
         # cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         h, w = image.shape[:2]
-        y1, y2 = int(h * 0.167), int(h * 0.696)
-        x1, x2 = int(w * 0.146), int(w * 0.542)
+        y1, y2 = int(h * 0.040), int(h * 0.400)
+        x1, x2 = int(h * 0.410), int(h * 0.770)
         image = image[y1:y2, x1:x2]
         image = cv2.resize(image, (self.img_w, self.img_h),
                            interpolation=cv2.INTER_AREA)
@@ -97,7 +97,7 @@ class Inference(object):
                 selected_indices = tf.image.non_max_suppression(
                     bboxes, scores,
                     max_output_size=10,
-                    iou_threshold=0.7)
+                    iou_threshold=0.5)
                 bboxes = tf.gather(bboxes, selected_indices)
                 class_probs = tf.gather(class_probs, selected_indices)
                 top_probs, top_classes = tf.nn.top_k(class_probs, 1)
