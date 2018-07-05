@@ -1,6 +1,6 @@
 #!/bin/bash
 
 INPUT_DIR=/media/storage/datasets/products/MasterCard/out_final/objects
-OUTPUT_DIR=/media/storage/datasets/products/TrainData/train_data/sample_005
+OUTPUT_DIR=/media/storage/datasets/products/TrainData/train_data/sample_004
 
-python3 dataset_generator.py $INPUT_DIR $OUTPUT_DIR --dontocclude --add_distractors
+python3 dataset_generator.py $INPUT_DIR $OUTPUT_DIR --dontocclude --add_distractors --selected

@@ -1,6 +1,6 @@
 # Paths
 # Fill this according to own setup
-BACKGROUND_DIR = '/media/storage/datasets/products/background/Images/garage'
+BACKGROUND_DIR = '/media/storage/datasets/products/background/Images/livingroom'
 BACKGROUND_GLOB_STRING = '*.jpg'
 POISSON_BLENDING_DIR = '/usr1/debidatd/pb'
 SELECTED_LIST_FILE = '/media/storage/datasets/products/TrainData/selected_objects.txt'
@@ -10,7 +10,7 @@ DISTRACTOR_GLOB_STRING = '*.png'
 INVERTED_MASK = False  # Set to true if white pixels represent background
 
 # Parameters for generator
-NUMBER_OF_WORKERS = 4
+NUMBER_OF_WORKERS = 12
 BLENDING_LIST = ['gaussian', 'poisson', 'none', 'box', 'motion']
 
 # Parameters for images

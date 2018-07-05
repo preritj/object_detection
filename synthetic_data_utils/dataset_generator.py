@@ -102,7 +102,9 @@ def get_list_of_images(root_dir, N=300):
         img_list = glob.glob(os.path.join(obj_dir, '*.png'))
         num = len(img_list)
         if num < N:
-            img_list += random.sample(img_list, N - num)
+            img_list = int(N / num) * img_list
+            n = len(img_list)
+            img_list += random.sample(img_list, N - n)
         elif num > N:
             img_list = random.sample(img_list, N)
         img_list_f += img_list
