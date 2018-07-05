@@ -269,11 +269,38 @@ def PIL2array4C(img_png):
         NumPy Array: Converted image
         NumPy Array: Converted mask
     """
-    img_mask =  np.array(img_png.getdata(), np.uint8).reshape(
+    img_mask = np.array(img_png.getdata(), np.uint8).reshape(
         img_png.size[1], img_png.size[0], 4)
     img = img_mask[:, :, :3]
     mask = img_mask[:, :, 3]
     return img, mask
+
+
+def rotate_bound(image, angle, out_size):
+    # grab the dimensions of the image and then determine the
+    # center
+    (h, w) = image.shape[:2]
+    nW, nH = out_size
+    (cX, cY) = (w // 2, h // 2)
+
+    # # grab the rotation matrix (applying the negative of the
+    # # angle to rotate clockwise), then grab the sine and cosine
+    # # (i.e., the rotation components of the matrix)
+    M = cv2.getRotationMatrix2D((cX, cY), angle, 1.0)
+    # cos = np.abs(M[0, 0])
+    # sin = np.abs(M[0, 1])
+
+    # compute the new bounding dimensions of the image
+    # nW = int((h * sin) + (w * cos))
+    # nH = int((h * cos) + (w * sin))
+
+    # adjust the rotation matrix to take into account translation
+    M[0, 2] += (nW / 2) - cX
+    M[1, 2] += (nH / 2) - cY
+
+    # nH, nW = h, w
+    # perform the actual rotation and return the image
+    return cv2.warpAffine(image, M, (nW, nH))
 
 
 def create_image_anno_wrapper(args, w=WIDTH, h=HEIGHT, scale_augment=False,
@@ -353,10 +380,12 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
         already_syn = [] if dontocclude else None
         for idx, obj in enumerate(all_objects):
             foreground = Image.open(obj[0])
+            foreground_array = cv2.imread(obj[0], cv2.IMREAD_UNCHANGED)
             xmin, xmax, ymin, ymax = get_annotation_from_mask_file(get_mask_file(obj[0]))
             if xmin == -1 or ymin == -1 or xmax - xmin < MIN_WIDTH or ymax - ymin < MIN_HEIGHT:
                 continue
             foreground = foreground.crop((xmin, ymin, xmax, ymax))
+            foreground_array = foreground_array[ymin:ymax, xmin:xmax]
             orig_w, orig_h = foreground.size
             # mask_file = get_mask_file(obj[0])
             mask = foreground.split()[3]
@@ -371,6 +400,7 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
                     if w - o_w > 0 and h - o_h > 0 and o_w > 0 and o_h > 0:
                         break
                 foreground = foreground.resize((o_w, o_h), Image.ANTIALIAS)
+                foreground_array = cv2.resize(foreground_array, (o_w, o_h), cv2.INTER_AREA)
                 mask = mask.resize((o_w, o_h), Image.ANTIALIAS)
             if rotation_augment:
                 max_degrees = MAX_DEGREES
@@ -379,10 +409,12 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
                     foreground_tmp = foreground.rotate(rot_degrees, expand=True)
                     mask_tmp = mask.rotate(rot_degrees, expand=True)
                     o_w, o_h = foreground_tmp.size
+                    foreground_array_tmp = rotate_bound(foreground_array, rot_degrees, (o_w, o_h))
                     if w - o_w > 0 and h - o_h > 0:
                         break
                 mask = mask_tmp
                 foreground = foreground_tmp
+                foreground_array = foreground_array_tmp
             xmin, xmax, ymin, ymax = get_annotation_from_mask(mask)
             attempt = 0
             while True:
@@ -415,7 +447,8 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
                 elif blending_list[i] == 'poisson':
                     offset = (y, x)
                     img_mask = PIL2array1C(mask)
-                    img_src, _ = PIL2array4C(foreground)
+                    # img_src, _ = PIL2array4C(foreground)
+                    img_src = np.clip(foreground_array[:, :, 2::-1].astype(np.float64), 0, 255)
                     img_src = img_src.astype(np.float64)
                     img_target = PIL2array3C(backgrounds[i])
                     img_mask, img_src, offset_adj \

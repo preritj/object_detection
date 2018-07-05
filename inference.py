@@ -39,7 +39,7 @@ class Inference(object):
         image = image[:, :, ::-1]
         # cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         h, w = image.shape[:2]
-        y1, y2 = int(h * 0.040), int(h * 0.400)
+        y1, y2 = int(h * 0.180), int(h * 0.540)
         x1, x2 = int(h * 0.410), int(h * 0.770)
         image = image[y1:y2, x1:x2]
         image = cv2.resize(image, (self.img_w, self.img_h),

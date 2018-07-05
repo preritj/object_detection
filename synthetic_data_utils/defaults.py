@@ -1,6 +1,6 @@
 # Paths
 # Fill this according to own setup
-BACKGROUND_DIR = '/media/storage/datasets/products/background/Images/corridor'
+BACKGROUND_DIR = '/media/storage/datasets/products/background/Images/garage'
 BACKGROUND_GLOB_STRING = '*.jpg'
 POISSON_BLENDING_DIR = '/usr1/debidatd/pb'
 SELECTED_LIST_FILE = '/media/storage/datasets/products/TrainData/selected_objects.txt'

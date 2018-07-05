@@ -47,7 +47,7 @@ def refine_masks(args_):
             print("Product directory already exists:")
             if args_.overwrite:
                 print("Overwriting.")
-                files = glob(out_prod_dir)
+                files = glob(out_prod_dir).sort()
                 for f in files:
                     os.remove(f)
             else:
