@@ -23,10 +23,10 @@ HEIGHT = 384
 MAX_ATTEMPTS_TO_SYNTHESIZE = 40
 
 # Parameters for objects in images
-MIN_SCALE = 0.23  # min scale for scale augmentation
-MAX_SCALE = 0.30  # max scale for scale augmentation
+MIN_SCALE = 0.22  # min scale for scale augmentation
+MAX_SCALE = 0.32  # max scale for scale augmentation
 MAX_DEGREES = 30  # max rotation allowed during rotation augmentation
 MAX_TRUNCATION_FRACTION = 0.25  # max fraction to be truncated = MAX_TRUNCACTION_FRACTION*(WIDTH/HEIGHT)
-MAX_ALLOWED_IOU = 0.5  # IOU > MAX_ALLOWED_IOU is considered an occlusion
+MAX_ALLOWED_IOU = 0.7  # IOU > MAX_ALLOWED_IOU is considered an occlusion
 MIN_WIDTH = 6  # Minimum width of object to use for data generation
 MIN_HEIGHT = 6  # Minimum height of object to use for data generation

@@ -65,8 +65,8 @@ depth_multiplier: 1.
 min_depth: 8
 
 # in top-down format
-base_anchor_sizes: [64, 128]
-anchor_strides: [16, 32]
+base_anchor_sizes: [32, 64, 128]
+anchor_strides: [8, 16, 32]
 
 anchor_scales: [1., 1.2599, 1.5874]
 anchor_ratios: [.5, 1., 2.]

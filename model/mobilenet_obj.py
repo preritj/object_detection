@@ -75,7 +75,7 @@ class MobilenetPose(Model):
                 last_layer = self._skip_layers[-1]
                 net = image_features[last_layer]
                 for i in range(n_skips - 2, -1, -1):
-                    fpn_name = 'Expanded_conv_fpn_' + str(i + 1)
+                    fpn_name = 'Expanded_conv_fpn_' + str(i + 2)
                     net = expanded_conv(
                         net,
                         num_outputs=self._fpn_depth,
@@ -85,6 +85,13 @@ class MobilenetPose(Model):
                     net = ops.nearest_neighbor_upsampling(net, 2)
                     skip_layer = self._skip_layers[i]
                     net = tf.concat([net, image_features[skip_layer]], -1)
+                fpn_name = 'Expanded_conv_fpn_1'
+                net = expanded_conv(
+                    net,
+                    num_outputs=self._fpn_depth,
+                    stride=1,
+                    scope=fpn_name)
+                fpn_layers[fpn_name] = net
         return fpn_layers
 
     def bbox_clf_reg_net(self, fpn_features, is_training=False, scope=None):

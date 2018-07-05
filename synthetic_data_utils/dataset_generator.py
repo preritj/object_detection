@@ -85,22 +85,28 @@ def overlap(a, b):
         return False
 
 
-def get_list_of_images(root_dir, N=1):
+def get_list_of_images(root_dir, N=300):
     """Gets the list of images of objects in the root directory. The expected format
        is root_dir/<object>/<image>.jpg. Adds an image as many times you want it to 
        appear in dataset.
 
     Args:
         root_dir(string): Directory where images of objects are present
-        N(int): Number of times an image would appear in dataset. Each image should have
-                different data augmentation
+        N(int): Number of images per category.
     Returns:
         list: List of images(with paths) that will be put in the dataset
     """
-    img_list = glob.glob(os.path.join(root_dir, '*/*.png'))
+    objects = glob.glob(os.path.join(root_dir, '*'))
     img_list_f = []
-    for i in range(N):
-        img_list_f = img_list_f + random.sample(img_list, len(img_list))
+    for obj_dir in objects:
+        img_list = glob.glob(os.path.join(obj_dir, '*.png'))
+        num = len(img_list)
+        if num < N:
+            img_list += random.sample(img_list, N - num)
+        elif num > N:
+            img_list = random.sample(img_list, N)
+        img_list_f += img_list
+    random.shuffle(img_list_f)
     return img_list_f
 
 
@@ -625,7 +631,7 @@ def parse_args():
         help="Add rotation augmentation.Default is to add rotation augmentation.", action="store_false")
     parser.add_argument(
         "--num",
-        help="Number of times each image will be in dataset", default=1, type=int)
+        help="Number of images per category", default=300, type=int)
     parser.add_argument(
         "--dontocclude",
         help="Add objects without occlusion. Default is to produce occlusions", action="store_true")
