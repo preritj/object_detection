@@ -36,8 +36,13 @@ class ObjectData(object):
                     self.product_labels[prod_name] = int(label)
             with open(train_file, 'r') as f:
                 dataset = {}
+                train_file_dir = os.path.dirname(train_file)
                 for line in f:
                     img, ann_file = line.split()
+                    img = os.path.join(train_file_dir, 'images',
+                                       os.path.basename(img))
+                    img = os.path.join(train_file_dir, 'annotations',
+                                       os.path.basename(ann_file))
                     dataset[img] = ann_file
                 self.datasets.append(dataset)
         print('Done (t={:0.2f}s)'.format(time.time() - tic))
