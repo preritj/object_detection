@@ -45,23 +45,28 @@ def flip_left_right_bboxes(bboxes):
     return tf.concat([ymin, 1. - xmax, ymax, 1. - xmin], 1)
 
 
-def rotate_bboxes(bboxes, k=1):
+def rotate_bboxes(bboxes, k):
     """rotate in multiples of 90 degrees"""
     y1, x1, y2, x2 = tf.split(value=bboxes, num_or_size_splits=4,
                               axis=1)
-    if k == 3:
-        return tf.concat([x1, 1. - y2, x2, 1. - y1], 1)
-    elif k == 2:
-        return tf.concat([1. - y2, 1. - x2, 1. - y1, 1. - x1], 1)
-    elif k == 1:
-        return tf.concat([1. - x2, y1, 1. - x1, y2], 1)
+    rot_0 = lambda: bboxes
+    rot_90 = lambda: tf.concat([1. - x2, y1, 1. - x1, y2], 1)
+    rot_180 = lambda: tf.concat([1. - y2, 1. - x2, 1. - y1, 1. - x1], 1)
+    rot_270 = lambda: tf.concat([x1, 1. - y2, x2, 1. - y1], 1)
+
+    rot_bboxes = tf.case(
+        {tf.equal(k, 0): rot_0,
+         tf.equal(k, 1): rot_90,
+         tf.equal(k, 2): rot_180,
+         tf.equal(k, 3): rot_270},
+        default=rot_0, exclusive=True)
+    return rot_bboxes
 
 
 def random_rotate(image, bboxes, labels):
-    k = np.random.randint(0, 4)
-    if k > 0:
-        image = tf.image.rot90(image, k)
-        bboxes = rotate_bboxes(bboxes, k)
+    k = random_int(4)
+    image = tf.image.rot90(image, k)
+    bboxes = rotate_bboxes(bboxes, k)
     return image, bboxes, labels
 
 

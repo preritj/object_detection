@@ -88,7 +88,6 @@ def get_mixed_gradient_sum(img_src, img_target, i, j, h, w, ofs,
         v_sum += np.array([fp[0] if abs(fp[0] * c) > abs(gp[0]) else gp[0],
                            fp[1] if abs(fp[1] * c) > abs(gp[1]) else gp[1],
                            fp[2] if abs(fp[2] * c) > abs(gp[2]) else gp[2]])
-
     return v_sum
 
 

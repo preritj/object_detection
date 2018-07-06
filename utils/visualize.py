@@ -21,7 +21,7 @@ def visualize_bboxes_on_image(image, boxes, top_classes,
             continue
         draw.line([(left, top), (left, bottom), (right, bottom),
                    (right, top), (left, top)], width=2, fill='red')
-        draw.rectangle([(left, top), (left + 26, top + 20)], fill='red')
+        draw.rectangle([(left, top), (left + 27, top + 20)], fill='red')
         font = ImageFont.truetype("Arial.ttf", 14)
         draw.text((left, top), class_labels[top_class[0]],
                   (255, 255, 255), font=font)
