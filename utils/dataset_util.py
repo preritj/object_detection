@@ -126,18 +126,34 @@ def prune_bboxes_keypoints(bboxes, keypoints, crop_box):
     return valid_bboxes, valid_keypoints
 
 
+def random_gaussian_noise(image, bboxes, labels, std=0.015):
+    noise = tf.random_normal(shape=tf.shape(image), mean=0., stddev=std)
+    new_image = tf.to_float(image) + 255. * noise
+    new_image = tf.clip_by_value(new_image,
+                                 clip_value_min=0,
+                                 clip_value_max=255)
+    return tf.cast(new_image, tf.uint8), bboxes, labels
+
+
 def random_brightness(image, bboxes, labels):
     image = tf.image.random_brightness(
         image,
-        max_delta=0.1)
+        max_delta=0.25)
     return image, bboxes, labels
 
 
 def random_contrast(image, bboxes, labels):
     image = tf.image.random_contrast(
         image,
-        lower=0.9,
-        upper=1.1)
+        lower=0.75,
+        upper=1.25)
+    return image, bboxes, labels
+
+
+def random_hue(image, bboxes, labels):
+    image = tf.image.random_hue(
+        image,
+        max_delta=0.025)
     return image, bboxes, labels
 
 

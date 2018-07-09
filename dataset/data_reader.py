@@ -9,8 +9,8 @@ import json
 from tqdm import tqdm
 import functools
 from utils.dataset_util import (
-    random_brightness, random_contrast, random_rotate,
-    random_flip_left_right, keypoints_select, resize)
+    random_brightness, random_contrast, random_rotate, random_hue,
+    random_gaussian_noise, random_flip_left_right, keypoints_select, resize)
 
 
 slim_example_decoder = tf.contrib.slim.tfexample_decoder
@@ -46,6 +46,24 @@ class ObjectDataReader(object):
                     for line in f:
                         label, prod_name = line.split()
                         self.product_names[int(label)] = prod_name
+
+                text_labels = {}
+                with open(self.data_cfg.labels_csv, 'r') as f:
+                    for line in f:
+                        prod_id, prod_name = line.split(',')
+                        prod_name = (prod_name.split('\n')[0]).strip()
+                        try:
+                            prod_id = int(prod_id)
+                        except ValueError:
+                            continue
+                        text_labels[str(prod_id)] = prod_name
+                with open(self.data_cfg.out_labels, 'w') as f:
+                    for label, prod_id in self.product_names.items():
+                        if label == 0:
+                            f.write(str(label) + ', Background\n')
+                        else:
+                            prod_name = text_labels[prod_id]
+                            f.write(str(label) + ', ' + prod_name + '\n')
             if (len(tfrecord_files) == 0) or dataset['overwrite_tfrecord']:
                 for train_file in train_files:
                     train_file_dir = os.path.dirname(train_file)
@@ -58,6 +76,11 @@ class ObjectDataReader(object):
                     ds = self.add_dataset(name, data_dir, train_file,
                                           tfrecord_path, weight)
                     ds.create_tf_record(tfrecord_path)
+                    self.datasets.append({'name': name,
+                                          'tfrecord_path': tfrecord_path,
+                                          'weight': weight})
+            else:
+                for tfrecord_path in tfrecord_files:
                     self.datasets.append({'name': name,
                                           'tfrecord_path': tfrecord_path,
                                           'weight': weight})
@@ -178,6 +201,18 @@ class ObjectDataReader(object):
         if aug_cfg['random_contrast']:
             dataset = dataset.map(
                 random_contrast,
+                num_parallel_calls=train_cfg.num_parallel_map_calls
+            )
+            dataset = dataset.prefetch(train_cfg.prefetch_size)
+        if aug_cfg['random_hue']:
+            dataset = dataset.map(
+                random_hue,
+                num_parallel_calls=train_cfg.num_parallel_map_calls
+            )
+            dataset = dataset.prefetch(train_cfg.prefetch_size)
+        if aug_cfg['random_gaussian_noise']:
+            dataset = dataset.map(
+                random_gaussian_noise,
                 num_parallel_calls=train_cfg.num_parallel_map_calls
             )
             dataset = dataset.prefetch(train_cfg.prefetch_size)

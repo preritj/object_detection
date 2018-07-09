@@ -41,7 +41,7 @@ class ObjectData(object):
                     img, ann_file = line.split()
                     img = os.path.join(train_file_dir, 'images',
                                        os.path.basename(img))
-                    img = os.path.join(train_file_dir, 'annotations',
+                    ann_file = os.path.join(train_file_dir, 'annotations',
                                        os.path.basename(ann_file))
                     dataset[img] = ann_file
                 self.datasets.append(dataset)

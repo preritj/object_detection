@@ -7,11 +7,6 @@ import argparse
 from glob import glob
 import functools
 import utils.visualize as vis
-from dataset.data_reader import ObjectDataReader
-import urllib.request
-import requests
-from requests.auth import HTTPBasicAuth
-from utils.ops import non_max_suppression
 from utils.bboxes import generate_anchors, bbox_decode
 from utils.parse_config import parse_config
 
@@ -28,10 +23,22 @@ class Inference(object):
         self.frozen_model_file = os.path.join(
             self.infer_cfg.model_dir, self.infer_cfg.frozen_model)
         self.img_h, self.img_w = self.infer_cfg.resize_shape
-        self.data_reader = ObjectDataReader(self.data_cfg)
-        self.labels = self.data_reader.product_names
+        self.labels = self.get_labels()
         self.anchors = self.generate_anchors()
         self.network_tensors = self.network_forward_pass()
+
+    def get_labels(self):
+        labels = {}
+        with open(self.data_cfg.out_labels, 'r') as f:
+            for line in f:
+                prod_id, prod_name = line.split(',')
+                prod_name = (prod_name.split('\n')[0]).strip()
+                try:
+                    prod_id = int(prod_id)
+                except ValueError:
+                    continue
+                labels[prod_id] = prod_name
+        return labels
 
     def preprocess_image(self, image):
         # tensorflow expects RGB!
@@ -39,8 +46,8 @@ class Inference(object):
         image = image[:, :, ::-1]
         # cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         h, w = image.shape[:2]
-        y1, y2 = int(h * 0.180), int(h * 0.540)
-        x1, x2 = int(h * 0.410), int(h * 0.770)
+        y1, y2 = int(h * 0.140), int(h * 0.530)
+        x1, x2 = int(h * 0.390), int(h * 0.780)
         image = image[y1:y2, x1:x2]
         image = cv2.resize(image, (self.img_w, self.img_h),
                            interpolation=cv2.INTER_AREA)
@@ -82,7 +89,7 @@ class Inference(object):
         for i in range(batch_size):
             obj_prob = 1. - bbox_probs[i][:, 0]
             indices = tf.squeeze(tf.where(
-                tf.greater(obj_prob, 0.5)))
+                tf.greater(obj_prob, 0.4)))
 
             def _draw_bboxes():
                 img = tf.squeeze(images[i])
@@ -96,8 +103,8 @@ class Inference(object):
                 scores = tf.gather(obj_prob, indices)
                 selected_indices = tf.image.non_max_suppression(
                     bboxes, scores,
-                    max_output_size=10,
-                    iou_threshold=0.5)
+                    max_output_size=30,
+                    iou_threshold=0.4)
                 bboxes = tf.gather(bboxes, selected_indices)
                 class_probs = tf.gather(class_probs, selected_indices)
                 top_probs, top_classes = tf.nn.top_k(class_probs, 1)
@@ -207,6 +214,8 @@ class Inference(object):
                 images = np.array([self.preprocess_image(image)])
                 bbox_on_images, t = self._run_inference(sess, images)
                 stats.update(t)
+                delta_t = t[2] - t[0]
+                time.sleep(max(2 - delta_t, 0.5))
                 if not self.display_output(bbox_on_images):
                     break
             cap.release()

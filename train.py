@@ -2,8 +2,8 @@ import os
 import argparse
 import tensorflow as tf
 from model.mobilenet_obj import MobilenetPose
-import functools
 from dataset.data_reader import ObjectDataReader
+import functools
 from utils.parse_config import parse_config
 from utils.bboxes import (generate_anchors, get_matches,
                           bbox_decode)
@@ -17,7 +17,6 @@ try:
 except ImportError:
     print("Horovod module not found, will not use distributed training")
     use_hvd = False
-use_hvd = False
 
 slim = tf.contrib.slim
 DEBUG = False
@@ -32,27 +31,27 @@ class Trainer(object):
         self.train_cfg = cfg['train_config']
         self.model_cfg = cfg['model_config']
         self.infer_cfg = cfg['infer_config']
+        self.labels = self.get_labels()
         self.data_reader = ObjectDataReader(self.data_cfg)
-        self.labels = self.data_reader.product_names
-        # label_codes = self.data_reader.product_names
-        # text_labels = {}
-        # with open(self.infer_cfg.products_csv, 'r') as f:
-        #     for line in f:
-        #         prod_id, prod_name = line.split(',')
-        #         prod_name = (prod_name.split('\n')[0]).strip()
-        #         try:
-        #             prod_id = int(prod_id)
-        #         except ValueError:
-        #             continue
-        #         text_labels[str(prod_id)] = prod_name
-        # for i, prod_id in label_codes.items():
-        #
         self.hparams = tf.contrib.training.HParams(
             **self.model_cfg.__dict__,
             num_classes=len(self.labels))
         self.gpu_device = '/gpu:0'
         self.cpu_device = '/cpu:0'
         self.param_server_device = '/gpu:0'
+
+    def get_labels(self):
+        labels = {}
+        with open(self.data_cfg.out_labels, 'r') as f:
+            for line in f:
+                prod_id, prod_name = line.split(',')
+                prod_name = (prod_name.split('\n')[0]).strip()
+                try:
+                    prod_id = int(prod_id)
+                except ValueError:
+                    continue
+                labels[prod_id] = prod_name
+        return labels
 
     def generate_anchors(self):
         all_anchors = []
@@ -206,6 +205,24 @@ class Trainer(object):
             config=run_config  # RunConfig
         )
 
+        # ws = None
+        # if self.train_cfg.warm_start:
+        #     ckpt = self.train_cfg.warm_start_path
+        #     reader = pywrap_tensorflow.NewCheckpointReader(ckpt)
+        #     checkpoint_vars = reader.get_variable_to_shape_map()
+        #     checkpoint_vars = [v for v in checkpoint_vars.keys()]
+        #     print("***************************** ", checkpoint_vars)
+        #     ws = tf.estimator.WarmStartSettings(
+        #         ckpt_to_initialize_from=self.train_cfg.warm_start_path,
+        #         vars_to_warm_start=checkpoint_vars)
+        #
+        # estimator = tf.estimator.Estimator(
+        #     model_fn=self.get_model_fn(),
+        #     warm_start_from=ws,
+        #     params=self.hparams,  # HParams
+        #     config=run_config  # RunConfig
+        # )
+
         hooks = None
         if use_hvd:
             # Horovod: BroadcastGlobalVariablesHook broadcasts initial variable states from
@@ -329,6 +346,13 @@ class Trainer(object):
             # inputs = {'images': features}
             # predictions = model.predict(inputs, is_training=is_training)
             predictions = model.predict(features, is_training=is_training)
+            if self.train_cfg.warm_start:
+                ckpt = self.train_cfg.warm_start_path
+                variables_to_restore = [v for v in tf.trainable_variables()
+                                        if 'clf_feat' not in v.name]
+                tf.train.init_from_checkpoint(
+                    ckpt,
+                    {v.name.split(':')[0]: v for v in variables_to_restore})
             with tf.device(self.cpu_device):
                 self.prepare_tf_summary(features, predictions)
             # Loss, training and eval operations are not needed during inference.
