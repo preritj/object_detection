@@ -122,10 +122,15 @@ class Inference(object):
                 # return tf.image.draw_bounding_boxes(
                 #    images[i], bboxes)
 
+            def _default():
+                img = images[i]
+                dummy = 255 * tf.ones((1, 320, self.img_w, 3), tf.uint8)
+                return tf.concat([img, dummy], axis=1)
+
             out_image = tf.cond(
                 tf.greater(tf.rank(indices), 0),
                 true_fn=_draw_bboxes,
-                false_fn=lambda: images[i])
+                false_fn=_default)
             out_images.append(out_image)
         out_images = tf.concat(out_images, axis=0)
         return out_images
