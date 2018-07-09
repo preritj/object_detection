@@ -19,10 +19,9 @@ class Inference(object):
         self.model_cfg = cfg['model_config']
         self.infer_cfg = cfg['infer_config']
         self.col_channels = 3  # assume RGB channels only
-        self.out_stride = self.infer_cfg.out_stride
         self.frozen_model_file = os.path.join(
             self.infer_cfg.model_dir, self.infer_cfg.frozen_model)
-        self.img_h, self.img_w = self.infer_cfg.resize_shape
+        self.img_h, self.img_w = self.infer_cfg.network_input_shape
         self.labels = self.get_labels()
         self.anchors = self.generate_anchors()
         self.network_tensors = self.network_forward_pass()
@@ -46,12 +45,16 @@ class Inference(object):
         image = image[:, :, ::-1]
         # cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         h, w = image.shape[:2]
-        y1, y2 = int(h * 0.140), int(h * 0.530)
-        x1, x2 = int(h * 0.390), int(h * 0.780)
-        image = image[y1:y2, x1:x2]
-        image = cv2.resize(image, (self.img_w, self.img_h),
-                           interpolation=cv2.INTER_AREA)
-        return image
+        patches = []
+        for crop in self.infer_cfg.frame_crops:
+            y1, x1, y2, x2 = crop
+            y1, y2 = int(h * y1), int(h * y2)
+            x1, x2 = int(h * x1), int(h * x2)
+            patch = image[y1:y2, x1:x2]
+            patch = cv2.resize(patch, (self.img_w, self.img_h),
+                               interpolation=cv2.INTER_AREA)
+            patches.append(patch)
+        return patches
 
     def generate_anchors(self):
         all_anchors = []
@@ -70,7 +73,7 @@ class Inference(object):
         return tf.concat(all_anchors, axis=0)
 
     def draw_bboxes_on_images(self, images, bbox_probs, bbox_regs):
-        batch_size = 1
+        batch_size = len(self.infer_cfg.frame_crops)
         images = tf.cast(images, tf.uint8)
         images = tf.split(
             images,
@@ -156,19 +159,12 @@ class Inference(object):
         return bbox_on_images, [t0, t1, t2, t3]
 
     def display_output(self, bbox_on_images):
+        n, h, w = bbox_on_images.shape[:3]
+        sep = np.zeros((h, 10, 3), dtype=np.uint8)
         out = bbox_on_images[0]
+        for i in range(1, n):
+            out = np.concatenate([out, sep, bbox_on_images[i]], axis=1)
         out = cv2.cvtColor(out, cv2.COLOR_RGB2BGR)
-        # out = cv2.resize(out, (self.img_w, self.img_h))
-        # if self.infer_cfg.display_bbox:
-        #     for box in bboxes:
-        #         if len(box) == 0:
-        #             continue
-        #         ymin, xmin, ymax, xmax = box
-        #         out = cv2.rectangle(
-        #             out, (xmin, ymin), (xmax, ymax), (0, 0, 255), 1)
-        # # back to BGR for opencv display
-        # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        # out = cv2.addWeighted(image, 0.4, out, 0.6, 0)
         cv2.imshow('out', out)
         if cv2.waitKey(1) == 27:  # Esc key to stop
             return 0
@@ -211,11 +207,11 @@ class Inference(object):
                 ret, image = cap.read()
                 if not ret:
                     break
-                images = np.array([self.preprocess_image(image)])
+                images = np.array(self.preprocess_image(image))
                 bbox_on_images, t = self._run_inference(sess, images)
                 stats.update(t)
                 delta_t = t[2] - t[0]
-                time.sleep(max(2 - delta_t, 0.5))
+                time.sleep(max(self.infer_cfg.camera_capture_interval - delta_t, 0.5))
                 if not self.display_output(bbox_on_images):
                     break
             cap.release()
