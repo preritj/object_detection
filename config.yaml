@@ -101,24 +101,27 @@ frozen_model: frozen_model.pb
 network_input_shape: [384, 384]
 products_csv: '/media/storage/datasets/products/products.csv'
 
+top_k: 10
+
 # format for frame crops is [y_min, x_min, y_max, x_max]
 # all coordinates normalized wrt height of the full frame
 frame_crops:
-  - [0.140, 0.390, 0.530, 0.780]
-  - [0.180, 0.720, 0.540, 1.080]
+  - [0, 0, 1, 1]
+#   - [0.140, 0.390, 0.530, 0.780]
+#   - [0.180, 0.720, 0.540, 1.080]
 
-# input_type can be images, video or camera
-input_type: camera
+# input_type can be images, video, camera or http
+input_type: images
 # images can be a list or use *
 # images: /media/easystore/TrainData/Walmart/Round1/Recording_2/20180308_*.jpg
-images: /media/easystore/TrainData/Lab/April20/Recording_44/20180420_*.jpg
+# images: /media/easystore/TrainData/Lab/April20/Recording_44/20180420_*.jpg
+images: ['/media/storage/AVAretail/MasterCardShelf/test7.png']
 
 video: /media/easystore/TrainData/Lab/April20/Recording_44/20180420_0000000.avi
 
 # camera: http://root:123456@192.168.1.24/mjpg/video.mjpg
 camera: http://root:amrelirox@192.168.1.24/mjpg/video.mjpg
 camera_capture_interval: 0.25  # in seconds
-
 
 display_bbox: true
 

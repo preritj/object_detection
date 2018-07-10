@@ -24,7 +24,8 @@ class Inference(object):
         self.img_h, self.img_w = self.infer_cfg.network_input_shape
         self.labels = self.get_labels()
         self.anchors = self.generate_anchors()
-        self.network_tensors = self.network_forward_pass()
+        if self.infer_cfg.input_type != 'http':
+            self.network_tensors = self.network_forward_pass()
 
     def get_labels(self):
         labels = {}
@@ -135,6 +136,65 @@ class Inference(object):
         out_images = tf.concat(out_images, axis=0)
         return out_images
 
+    def get_bboxes_and_classes(self, bbox_probs, bbox_regs):
+        batch_size = len(self.infer_cfg.frame_crops)
+        bbox_probs = tf.split(
+            tf.squeeze(bbox_probs),
+            num_or_size_splits=batch_size,
+            axis=0)
+        bbox_regs = tf.split(
+            bbox_regs,
+            num_or_size_splits=batch_size,
+            axis=0)
+        all_bboxes, all_top_classes, all_top_probs = [], [], []
+
+        for i in range(batch_size):
+            obj_prob = 1. - bbox_probs[i][:, 0]
+            indices = tf.squeeze(tf.where(
+                tf.greater(obj_prob, 0.4)))
+
+            def _get_bboxes():
+                bboxes = tf.gather(bbox_regs[i], indices)
+                class_probs = tf.gather(bbox_probs[i], indices)
+                # bboxes = tf.zeros_like(bboxes)
+                anchors = tf.gather(self.anchors, indices)
+                bboxes = bbox_decode(
+                    bboxes, anchors, self.model_cfg.scale_factors)
+                # bboxes = tf.expand_dims(bboxes, axis=0)
+                scores = tf.gather(obj_prob, indices)
+                selected_indices = tf.image.non_max_suppression(
+                    bboxes, scores,
+                    max_output_size=30,
+                    iou_threshold=0.4)
+                bboxes = tf.gather(bboxes, selected_indices)
+                scaling = tf.constant(
+                    [self.img_h, self.img_w, self.img_h, self.img_w],
+                    dtype=tf.float32)
+                scaling = tf.expand_dims(scaling, axis=0)
+                bboxes = bboxes * scaling
+                class_probs = tf.gather(class_probs, selected_indices)
+                top_probs, top_classes = tf.nn.top_k(
+                    class_probs, self.infer_cfg.top_k)
+                return bboxes, top_probs, top_classes
+
+            def _default():
+                bboxes = -1. * tf.ones([1, 4], tf.float32)
+                top_probs = -1. * tf.ones([1, self.infer_cfg.top_k], tf.float32)
+                top_classes = tf.zeros([1, self.infer_cfg.top_k], tf.int32)
+                return bboxes, top_probs, top_classes
+
+            bboxes, top_probs, top_classes = tf.cond(
+                tf.greater(tf.rank(indices), 0),
+                true_fn=_get_bboxes,
+                false_fn=_default)
+            all_bboxes.append(bboxes)
+            all_top_classes.append(top_classes)
+            all_top_probs.append(top_probs)
+        all_bboxes = tf.concat(all_bboxes, axis=0)
+        all_top_probs = tf.concat(all_top_probs, axis=0)
+        all_top_classes = tf.concat(all_top_classes, axis=0)
+        return [all_bboxes, all_top_classes, all_top_probs]
+
     def network_forward_pass(self):
         """Creates graph for network forward pass"""
         with tf.gfile.GFile(self.frozen_model_file, "rb") as f:
@@ -148,7 +208,7 @@ class Inference(object):
         bbox_regs = g.get_tensor_by_name('import/bbox_regs:0')
         with tf.device('/cpu:0'):
             bbox_on_images = self.draw_bboxes_on_images(
-            images, bbox_classes, bbox_regs)
+                images, bbox_classes, bbox_regs)
         return {'images': images,
                 'bbox_on_images': bbox_on_images}
 
@@ -171,11 +231,35 @@ class Inference(object):
             out = np.concatenate([out, sep, bbox_on_images[i]], axis=1)
         out = cv2.cvtColor(out, cv2.COLOR_RGB2BGR)
         cv2.imshow('out', out)
-        if cv2.waitKey(1) == 27:  # Esc key to stop
+        if cv2.waitKey(10000) == 27:  # Esc key to stop
             return 0
-        elif cv2.waitKey(1) & 0xFF == ord('q'):
+        elif cv2.waitKey(10000) & 0xFF == ord('q'):
             return 0
         return 1
+
+    def get_model_api(self):
+        with tf.gfile.GFile(self.frozen_model_file, "rb") as f:
+            graph_def = tf.GraphDef()
+            graph_def.ParseFromString(f.read())
+
+        with tf.get_default_graph().as_default() as g:
+            tf.import_graph_def(graph_def)
+        tf_images = g.get_tensor_by_name('import/images:0')
+        bbox_classes = g.get_tensor_by_name('import/bbox_classes:0')
+        bbox_regs = g.get_tensor_by_name('import/bbox_regs:0')
+        with tf.device('/cpu:0'):
+            tf_predictions = self.get_bboxes_and_classes(
+                bbox_classes, bbox_regs)
+        sess = tf.Session()
+
+        def model_api(input_images):
+            images = np.array(input_images)
+            bboxes, top_classes, top_probs = sess.run(
+                tf_predictions,
+                feed_dict={tf_images: images})
+            return bboxes, top_classes, top_probs
+
+        return model_api
 
     def run_inference(self):
         sess = tf.Session()
@@ -187,10 +271,11 @@ class Inference(object):
                 img_files = glob(img_files)
             for img_file in img_files:
                 image = cv2.imread(img_file)
-                image = self.preprocess_image(image)
-                out, bboxes, t = self._run_inference(sess, image)
+                images = np.array(self.preprocess_image(image))
+                print(np.max(images))
+                bbox_on_images, t = self._run_inference(sess, images)
                 stats.update(t)
-                if not self.display_output(image, out, bboxes):
+                if not self.display_output(bbox_on_images):
                     break
         elif input_type == 'video':
             video_file = self.infer_cfg.video

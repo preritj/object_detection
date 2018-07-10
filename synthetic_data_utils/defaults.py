@@ -1,6 +1,6 @@
 # Paths
 # Fill this according to own setup
-BACKGROUND_DIR = '/media/storage/datasets/products/background/Images/bathroom'
+BACKGROUND_DIR = '/media/storage/datasets/products/background/Images/classroom'
 BACKGROUND_GLOB_STRING = '*.jpg'
 POISSON_BLENDING_DIR = '/usr1/debidatd/pb'
 SELECTED_LIST_FILE = '/media/storage/datasets/products/TrainData/selected_objects.txt'
@@ -23,8 +23,8 @@ HEIGHT = 384
 MAX_ATTEMPTS_TO_SYNTHESIZE = 40
 
 # Parameters for objects in images
-MIN_SCALE = 0.22  # min scale for scale augmentation
-MAX_SCALE = 0.32  # max scale for scale augmentation
+MIN_SCALE = 0.34  # min scale for scale augmentation
+MAX_SCALE = 0.50  # max scale for scale augmentation
 MAX_DEGREES = 30  # max rotation allowed during rotation augmentation
 MAX_TRUNCATION_FRACTION = 0.25  # max fraction to be truncated = MAX_TRUNCACTION_FRACTION*(WIDTH/HEIGHT)
 MAX_ALLOWED_IOU = 0.7  # IOU > MAX_ALLOWED_IOU is considered an occlusion
