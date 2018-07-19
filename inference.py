@@ -93,7 +93,7 @@ class Inference(object):
         for i in range(batch_size):
             obj_prob = 1. - bbox_probs[i][:, 0]
             indices = tf.squeeze(tf.where(
-                tf.greater(obj_prob, 0.4)))
+                tf.greater(obj_prob, 0.)))
 
             def _draw_bboxes():
                 img = tf.squeeze(images[i])
@@ -107,8 +107,8 @@ class Inference(object):
                 scores = tf.gather(obj_prob, indices)
                 selected_indices = tf.image.non_max_suppression(
                     bboxes, scores,
-                    max_output_size=30,
-                    iou_threshold=0.4)
+                    max_output_size=200,
+                    iou_threshold=0.5)
                 bboxes = tf.gather(bboxes, selected_indices)
                 class_probs = tf.gather(class_probs, selected_indices)
                 top_probs, top_classes = tf.nn.top_k(class_probs, 1)
@@ -272,7 +272,6 @@ class Inference(object):
             for img_file in img_files:
                 image = cv2.imread(img_file)
                 images = np.array(self.preprocess_image(image))
-                print(np.max(images))
                 bbox_on_images, t = self._run_inference(sess, images)
                 stats.update(t)
                 if not self.display_output(bbox_on_images):

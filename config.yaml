@@ -106,7 +106,9 @@ top_k: 10
 # format for frame crops is [y_min, x_min, y_max, x_max]
 # all coordinates normalized wrt height of the full frame
 frame_crops:
-  - [0, 0, 1, 1]
+#  - [0., 1.1, .8, 1.9]
+  - [0., 0.1, .75, .85]
+#   - [0.3, .3, 1., 1.]
 #   - [0.140, 0.390, 0.530, 0.780]
 #   - [0.180, 0.720, 0.540, 1.080]
 
@@ -115,7 +117,7 @@ input_type: images
 # images can be a list or use *
 # images: /media/easystore/TrainData/Walmart/Round1/Recording_2/20180308_*.jpg
 # images: /media/easystore/TrainData/Lab/April20/Recording_44/20180420_*.jpg
-images: ['/media/storage/AVAretail/MasterCardShelf/test7.png']
+images: ['/media/storage/AVAretail/MasterCardShelf/transformed.png']
 
 video: /media/easystore/TrainData/Lab/April20/Recording_44/20180420_0000000.avi
 

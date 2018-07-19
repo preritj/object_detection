@@ -64,13 +64,9 @@ def api():
         bboxes, top_classes, top_probs):
         if top_probs_[0] < 0:
             continue
-        ymin, xmin, ymax, xmax = bbox
-        left, right, top, bottom = (xmin * w, xmax * w,
-                                    ymin * h, ymax * h)
         if top_classes_[0] == 0:
             continue
-        bbox = [left, top, right, bottom]
-        output_data.append({'bbox': bbox,
+        output_data.append({'bbox': bbox.tolist(),
                             'top_classes': top_classes_.tolist(),
                             'top_probs': top_probs_.tolist()})
     response = jsonify(output_data)

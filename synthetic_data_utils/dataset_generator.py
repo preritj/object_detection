@@ -320,7 +320,7 @@ def create_image_anno_wrapper(args, w=WIDTH, h=HEIGHT, scale_augment=False,
                              blending_list=blending_list, dontocclude=dontocclude)
 
 
-def create_image_anno(objects, distractor_objects, img_file, anno_file,
+def create_image_anno(objects, distractor_objects, stacked_objects, img_file, anno_file,
                       bg_file,  w=WIDTH, h=HEIGHT, scale_augment=False,
                       rotation_augment=False, blending_list=['none'], dontocclude=False):
     """Add data augmentation, synthesizes images and generates annotations according to given parameters
@@ -329,6 +329,7 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
         objects(list): List of objects whose annotations are also important
         distractor_objects(list): List of distractor objects that will be synthesized but
             whose annotations are not required
+        stacked_objects(list): List of objects to be stacked
         img_file(str): Image file name
         anno_file(str): Annotation file name
         bg_file(str): Background image path 
@@ -347,7 +348,12 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
         return anno_file
 
     attempt = 0
-    all_objects = objects + distractor_objects
+    all_objects = []
+    stack_indices =
+    for stacked_obj in stacked_objects:
+        n = random.randint(MIN_OBJECTS_IN_STACK, MAX_OBJECTS_IN_STACK)
+        all_objects += n * [stacked_obj]
+    all_objects += objects + distractor_objects
     while True:
         top = Element('annotation')
         background = Image.open(bg_file).convert('RGB')
@@ -386,7 +392,7 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
             backgrounds.append(background.copy())
         
         already_syn = [] if dontocclude else None
-        for idx, obj in enumerate(all_objects):
+        for idx, (obj, n_stacks) in enumerate(zip(all_objects, all_stacks)):
             foreground = Image.open(obj[0])
             foreground_array = cv2.imread(obj[0], cv2.IMREAD_UNCHANGED)
             xmin, xmax, ymin, ymax = get_annotation_from_mask_file(get_mask_file(obj[0]))
@@ -454,16 +460,48 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
                     backgrounds[i].paste(foreground, (x, y), mask)
                 elif blending_list[i] == 'poisson':
                     offset = (y, x)
+                    x0 = max(0, -x)
+                    y0 = max(0, -y)
+                    x1 = min(o_w, w - x)
+                    y1 = min(o_h, h - y)
                     img_mask = PIL2array1C(mask)
                     # img_src, _ = PIL2array4C(foreground)
-                    img_src = np.clip(foreground_array[:, :, 2::-1].astype(np.float64), 0, 255)
-                    img_src = img_src.astype(np.float64)
+                    img_src = np.clip(foreground_array[:, :, 2::-1].astype(np.uint8),
+                                      0, 255)
+                    src_patch = img_src[y0:y1, x0:x1]
                     img_target = PIL2array3C(backgrounds[i])
+                    kernel = (13, 13)
+                    eroded_mask = cv2.erode(np.copy(img_mask), np.ones(kernel), iterations=1)
+                    eroded_mask = np.clip(eroded_mask / 255., 0, 1.)
+                    blur_mask = cv2.GaussianBlur(eroded_mask, kernel, 5)
+                    # try:
+                    #     src = img_src[y0:y1, x0:x1]
+                    #     dst = img_target.astype(np.uint8)
+                    #     # src_mask = np.ones_like(foreground_array[y0:y1, x0:x1, 3], dtype=np.uint8)
+                    #     src_mask = np.clip(foreground_array[y0:y1, x0:x1, 3], 0, 255).astype(np.uint8)
+                    #     src_mask = cv2.dilate(src_mask, np.ones((7, 7)), iterations=1)
+                    #     x_min = max(0, x + xmin)
+                    #     y_min = max(0, y + ymin)
+                    #     x_max = min(w, x + xmax)
+                    #     y_max = min(h, y + ymax)
+                    #     center = (int((x_min + x_max) / 2),
+                    #               int((y_min + y_max) / 2))
+                    #     background_array = cv2.seamlessClone(
+                    #         src, dst, src_mask, center, flags=cv2.NORMAL_CLONE)
+                    # except:
+                    # try custom Poisson blending when opencv fails
+                    # print("Using custom Poisson blending")
+                    img_src = img_src.astype(np.float64)
                     img_mask, img_src, offset_adj \
                         = create_mask(img_mask.astype(np.float64),
                                       img_target, img_src, offset=offset)
                     background_array = poisson_blend(img_mask, img_src, img_target,
                                                      method='normal', offset_adj=offset_adj)
+                    patch = background_array[y + y0:y + y1, x + x0:x + x1]
+                    blur_mask = blur_mask[y0:y1, x0:x1]
+                    patch = (patch * np.expand_dims(1 - blur_mask, 2)
+                             + np.expand_dims(blur_mask, 2) * src_patch)
+                    background_array[y + y0:y + y1, x + x0:x + x1] = patch
                     backgrounds[i] = Image.fromarray(background_array, 'RGB')
                 elif blending_list[i] == 'gaussian':
                     backgrounds[i].paste(
@@ -505,7 +543,7 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
 
 
 def gen_syn_data(img_files, labels, img_dir, anno_dir, scale_augment, rotation_augment,
-                 dontocclude, add_distractors):
+                 dontocclude, add_distractors, add_stacked_objects):
     """Creates list of objects and distrctor objects to be pasted on what images.
        Spawns worker processes and generates images according to given params
 
@@ -517,7 +555,8 @@ def gen_syn_data(img_files, labels, img_dir, anno_dir, scale_augment, rotation_a
         scale_augment(bool): Add scale data augmentation
         rotation_augment(bool): Add rotation data augmentation
         dontocclude(bool): Generate images with occlusion
-        add_distractors(bool): Add distractor objects whose annotations are not required 
+        add_distractors(bool): Add distractor objects whose annotations are not required
+        add_stacked_objects(bool): Add stacks of objects
     """
     w = WIDTH
     h = HEIGHT
@@ -550,6 +589,12 @@ def gen_syn_data(img_files, labels, img_dir, anno_dir, scale_augment, rotation_a
         n = min(random.randint(MIN_NO_OF_OBJECTS, MAX_NO_OF_OBJECTS), len(img_labels))
         for i in range(n):
             objects.append(img_labels.pop())
+        stacked_objects = []
+        if add_stacked_objects:
+            n = min(random.randint(MIN_NO_OF_STACKED_OBJECTS, MAX_NO_OF_STACKED_OBJECTS),
+                    len(img_labels))
+            for i in range(n):
+                stacked_objects.append(img_labels.pop())
         # Get list of distractor objects 
         distractor_objects = []
         if add_distractors:
@@ -562,7 +607,7 @@ def gen_syn_data(img_files, labels, img_dir, anno_dir, scale_augment, rotation_a
         for blur in BLENDING_LIST:
             img_file = os.path.join(img_dir, '%i_%s.jpg' % (idx, blur))
             anno_file = os.path.join(anno_dir, '%i.xml' % idx)
-            params = (objects, distractor_objects, img_file, anno_file, bg_file)
+            params = (objects, distractor_objects, stacked_objects, img_file, anno_file, bg_file)
             params_list.append(params)
             img_files.append(img_file)
             anno_files.append(anno_file)

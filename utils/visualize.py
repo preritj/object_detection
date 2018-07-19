@@ -17,13 +17,14 @@ def visualize_bboxes_on_image_v0(image, boxes, top_classes,
                                     xmax * im_width,
                                     ymin * im_height,
                                     ymax * im_height)
+        top_pick = top_class[0]
         if top_class[0] == 0:
-            continue
+            top_pick = top_class[1]
         draw.line([(left, top), (left, bottom), (right, bottom),
                    (right, top), (left, top)], width=2, fill='red')
         draw.rectangle([(left, top), (left + 27, top + 20)], fill='red')
         font = ImageFont.truetype("Arial.ttf", 14)
-        draw.text((left, top), class_labels[top_class[0]],
+        draw.text((left, top), class_labels[top_pick],
                   (255, 255, 255), font=font)
     np.copyto(image, np.array(image_pil))
     return image

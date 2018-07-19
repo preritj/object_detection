@@ -5,9 +5,12 @@ import numpy as np
 from glob import glob
 from tqdm import tqdm
 from bilateral_solver import apply_bilateral
+from multiprocessing import Pool
+from functools import partial
+import signal
 
 
-def get_mask(filename, crop=None, scale=1, flip=False,
+def get_mask_v0(filename, crop=None, scale=1, flip=False,
              skip_contours=False, skip_bilateral=False):
     img_mask = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
     if crop is not None:
@@ -48,6 +51,97 @@ def get_mask(filename, crop=None, scale=1, flip=False,
     return img, mask
 
 
+def get_approx_mask(image, bkg_median, threshold=30):
+    h, w = image.shape[:2]
+    b = cv2.inRange(image, bkg_median - threshold, bkg_median + threshold)
+    b = (b / 255).astype(np.uint8)
+    kernel = np.ones((5, 5),np.uint8)
+    b = cv2.morphologyEx(b, cv2.MORPH_OPEN, kernel)
+    fill_mask = np.zeros((h+2, w+2), np.uint8)
+    cv2.floodFill(b, fill_mask, (0, 0), 1)
+    fill_mask = np.zeros((h+2, w+2), np.uint8)
+    cv2.floodFill(b, fill_mask, (w-1, 0), 1)
+    mask = 1 - b
+    fill_mask = np.zeros((h+2, w+2), np.uint8)
+    cv2.floodFill(b, fill_mask, (0, 0), 0)
+    mask = cv2.bitwise_or(mask, b)
+    return mask
+
+
+def get_mask(filename, crop=None, scale=1, flip=False, reflective=False):
+    img = cv2.imread(filename)
+    if crop is not None:
+        y1, x1, y2, x2 = crop
+        img = img[y1:y2, x1:x2]
+    if scale != 1:
+        img = cv2.resize(img, None, fx=scale, fy=scale,
+                         interpolation=cv2.INTER_AREA)
+    if flip:
+        img = cv2.flip(img, 1)
+    h, w = img.shape[:2]
+    # extract background color from bottom
+    img_lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    ab = img_lab[:, :, 1:]
+    bkg_patch = ab[int(0.8 * h):, :]
+    ab_median = np.median(bkg_patch, axis=(0, 1)).astype(np.uint8)
+    mask = cv2.GC_PR_BGD * np.ones(img.shape[:2], np.uint8)
+
+    # get masks with varying thresholds
+    thresh1 = 25 if reflective else 40
+    thresh2 = 15 if reflective else 25
+    obj_mask = get_approx_mask(ab, ab_median, threshold=thresh1)
+    pr_obj_mask = get_approx_mask(ab, ab_median, threshold=thresh2)
+    pr_bkg_mask = 1 - get_approx_mask(ab, ab_median, threshold=3)
+    bkg_mask = 1 - get_approx_mask(ab, ab_median, threshold=2)
+
+    # Run grabcut algorithm
+    mask[pr_bkg_mask > 0] = cv2.GC_PR_BGD
+    mask[bkg_mask > 0] = cv2.GC_BGD
+    mask[pr_obj_mask > 0] = cv2.GC_PR_FGD
+    mask[obj_mask > 0] = cv2.GC_FGD
+
+    bgdModel = np.zeros((1, 65), np.float64)
+    fgdModel = np.zeros((1, 65), np.float64)
+
+    mask, bgdModel, fgdModel = cv2.grabCut(img, mask, None, bgdModel,
+                                           fgdModel, 10, cv2.GC_INIT_WITH_MASK)
+    mask = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8')
+    mask = (255 * mask).astype(np.uint8)
+    kernel = np.ones((13, 13), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = (mask / 255).astype(np.uint8)
+
+    # mask = pr_obj_mask
+    # mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    # score = 0.2 * np.ones_like(mask, dtype=np.float32)
+    # # score[pr_obj_mask > 0] = .8
+    # score[obj_mask > 0] = 1.
+    # score[bkg_mask > 0] = 1.
+    # mask = apply_bilateral(img, mask, score, thresh=.7)
+    return img, mask
+
+
+def init_worker():
+    """
+    Catch Ctrl+C signal to termiante workers
+    """
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
+def create_mask_wrapper(args, crop=None, scale=1, flip=False,
+                        reflective=False):
+    """Wrapper used to pass params to workers"""
+    input_filename, output_filename = args[0], args[1]
+    try:
+        img, mask = get_mask(input_filename, crop, scale, flip, reflective)
+    except:
+        return
+    mask = np.expand_dims(mask, axis=2)
+    mask = (255 * mask).astype(np.uint8)
+    img = np.concatenate((img, mask), axis=2)
+    cv2.imwrite(output_filename, img)
+
+
 def refine_masks(args_):
     prods = glob(os.path.join(args_.raw_dir, args_.glob_string))
     crop = args_.crop
@@ -55,6 +149,7 @@ def refine_masks(args_):
         crop = None
     scale = args_.scale
     flip = args_.flip
+    reflective = args_.reflective
     skip_contours = args_.skip_contours
     skip_bilateral = args_.skip_bilateral
     for p in prods:
@@ -65,7 +160,8 @@ def refine_masks(args_):
             print("Product directory already exists:")
             if args_.overwrite:
                 print("Overwriting.")
-                files = glob(out_prod_dir).sort()
+                files = glob(os.path.join(out_prod_dir, "*"))
+                files.sort()
                 for f in files:
                     os.remove(f)
             else:
@@ -75,13 +171,23 @@ def refine_masks(args_):
             print("Writing in ", out_prod_dir)
             os.makedirs(out_prod_dir)
         prod_images = glob(os.path.join(p, "*.png"))
+        params_list = []
         for i, img_file in tqdm(enumerate(prod_images)):
             out_file = os.path.join(out_prod_dir, str(i).zfill(5)) + '.png'
-            img, mask = get_mask(img_file, crop, scale, flip, skip_contours, skip_bilateral)
-            mask = np.expand_dims(mask, axis=2)
-            mask = (255 * mask).astype(np.uint8)
-            img = np.concatenate((img, mask), axis=2)
-            cv2.imwrite(out_file, img)
+            params = (img_file, out_file)
+            params_list.append(params)
+        partial_func = partial(
+            create_mask_wrapper,
+            crop=crop, scale=scale, flip=flip, reflective=reflective)
+        p = Pool(args_.number_of_workers, init_worker)
+        try:
+            p.map(partial_func, params_list)
+        except KeyboardInterrupt:
+            print("....\nCaught KeyboardInterrupt, terminating workers")
+            p.terminate()
+        else:
+            p.close()
+        p.join()
 
 
 def parse_args():
@@ -105,6 +211,9 @@ def parse_args():
         "--skip_bilateral",
         help="Skips bilateral solver post-processing step. Default is to apply this processing.", action="store_true")
     parser.add_argument(
+        "--reflective",
+        help="Setting for reflective objects. Default is to not use this setting.", action="store_true")
+    parser.add_argument(
         "--scale",
         help="Scaling applied to images. Defaults to 1.", default=1, type=float)
     parser.add_argument(
@@ -113,6 +222,9 @@ def parse_args():
     parser.add_argument(
         "--glob_string",
         help="Glob string to make selections inside raw_dir. Defaults to *", default="*")
+    parser.add_argument(
+        "--number_of_workers",
+        help="Number of workers for pooling. Defaults to 4.", default=4, type=int)
     return parser.parse_args()
 
 
