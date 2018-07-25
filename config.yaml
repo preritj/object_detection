@@ -10,7 +10,7 @@ datasets:
     train_files: "train_data/*/train.txt"
     tfrecord_files: tfrecords/*.records
     weight: 1.
-    overwrite_tfrecord: true
+    overwrite_tfrecord: false
 
 labels_csv: /media/admin-u/data/products/products.csv
 out_labels: ./labels.csv

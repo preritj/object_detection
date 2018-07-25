@@ -134,11 +134,11 @@ class MobilenetPose(Model):
                     net = slim.conv2d(
                         net, self._num_classes * self._boxes_per_anchor,
                         [1, 1], scope='clf_feat')
-                    grid_h = tf.shape(net)[0] / stride
-                    grid_w = tf.shape(net)[1] / stride
+                    grid_h = tf.shape(net)[1] // stride
+                    grid_w = tf.shape(net)[2] // stride
                     n_anchors = grid_h * grid_w * self._boxes_per_anchor
-                    logits = tf.reshape(
-                        net, [-1, n_anchors * self._num_classes])
+                    shape = tf.stack([-1, n_anchors])
+                    logits = tf.reshape(net, shape)
                     bbox_clf_logits.append(logits)
         bbox_clf_logits = tf.concat(bbox_clf_logits, axis=1)
         bbox_clf_logits = tf.reshape(
@@ -177,10 +177,11 @@ class MobilenetPose(Model):
                     net = slim.conv2d(
                         net, 4 * self._boxes_per_anchor,
                         [1, 1], scope='reg_feat')
-                    grid_h = tf.shape(net)[0] / stride
-                    grid_w = tf.shape(net)[1] / stride
+                    grid_h = tf.shape(net)[1] // stride
+                    grid_w = tf.shape(net)[2] // stride
                     n_anchors = grid_h * grid_w * self._boxes_per_anchor
-                    regs = tf.reshape(net, [-1, 4 * n_anchors])
+                    shape = tf.stack([-1, n_anchors])
+                    regs = tf.reshape(net, shape)
                     bbox_regs.append(regs)
         bbox_regs = tf.concat(bbox_regs, axis=1)
         bbox_regs = tf.reshape(bbox_regs, [-1, 4])
