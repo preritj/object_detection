@@ -204,6 +204,7 @@ class Inference(object):
         with tf.get_default_graph().as_default() as g:
             tf.import_graph_def(graph_def)
         images = g.get_tensor_by_name('import/images:0')
+        # images = tf.reshape(images, [-1, self.img_h, self.img_w, 3])
         bbox_classes = g.get_tensor_by_name('import/bbox_classes:0')
         bbox_regs = g.get_tensor_by_name('import/bbox_regs:0')
         with tf.device('/cpu:0'):
@@ -215,6 +216,7 @@ class Inference(object):
     def _run_inference(self, sess, images):
         t0 = time.time()
         t1 = time.time()
+        print("************************* ", images.shape)
 
         bbox_on_images = sess.run(
             self.network_tensors['bbox_on_images'],
