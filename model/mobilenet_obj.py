@@ -33,8 +33,6 @@ class MobilenetPose(Model):
 
     def preprocess(self, inputs):
         """Image preprocessing"""
-        h, w = self.cfg.input_shape
-        inputs = tf.reshape(inputs, [-1, h, w, 3])
         return 2.0 * tf.to_float(inputs) / 255. - 1.0
 
     def build_net(self, preprocessed_inputs, is_training=False):
@@ -136,8 +134,8 @@ class MobilenetPose(Model):
                     net = slim.conv2d(
                         net, self._num_classes * self._boxes_per_anchor,
                         [1, 1], scope='clf_feat')
-                    grid_h = self.cfg.input_shape[0] // stride
-                    grid_w = self.cfg.input_shape[1] // stride
+                    grid_h = tf.shape(net)[0] / stride
+                    grid_w = tf.shape(net)[1] / stride
                     n_anchors = grid_h * grid_w * self._boxes_per_anchor
                     logits = tf.reshape(
                         net, [-1, n_anchors * self._num_classes])
@@ -179,8 +177,8 @@ class MobilenetPose(Model):
                     net = slim.conv2d(
                         net, 4 * self._boxes_per_anchor,
                         [1, 1], scope='reg_feat')
-                    grid_h = self.cfg.input_shape[0] // stride
-                    grid_w = self.cfg.input_shape[1] // stride
+                    grid_h = tf.shape(net)[0] / stride
+                    grid_w = tf.shape(net)[1] / stride
                     n_anchors = grid_h * grid_w * self._boxes_per_anchor
                     regs = tf.reshape(net, [-1, 4 * n_anchors])
                     bbox_regs.append(regs)

@@ -80,6 +80,8 @@ class Trainer(object):
         dataset = self.data_reader.read_data(train_cfg)
 
         def map_fn(images, bboxes, bbox_labels):
+            h, w = self.model_cfg.input_shape
+            images = tf.reshape(images, [-1, h, w, 3])
             features = {'images': images}
             classes, regs, weights = get_matches(
                 gt_bboxes=bboxes,
