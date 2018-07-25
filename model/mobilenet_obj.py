@@ -134,12 +134,11 @@ class MobilenetPose(Model):
                     net = slim.conv2d(
                         net, self._num_classes * self._boxes_per_anchor,
                         [1, 1], scope='clf_feat')
-                    grid_h = tf.div(tf.shape(net)[1], stride)
-                    grid_w = tf.div(tf.shape(net)[2], stride)
-                    n_anchors = grid_h * grid_w * self._boxes_per_anchor
-                    shape = tf.stack([-1, n_anchors])
-                    print("************ ", shape)
-                    logits = tf.reshape(net, shape)
+                    # grid_h = tf.div(tf.shape(net)[1], stride)
+                    # grid_w = tf.div(tf.shape(net)[2], stride)
+                    # n_anchors = grid_h * grid_w * self._boxes_per_anchor
+                    # shape = tf.stack([-1, n_anchors])
+                    logits = tf.reshape(net, shape=(tf.shape(net)[0], -1))
                     bbox_clf_logits.append(logits)
         bbox_clf_logits = tf.concat(bbox_clf_logits, axis=1)
         bbox_clf_logits = tf.reshape(
@@ -178,12 +177,11 @@ class MobilenetPose(Model):
                     net = slim.conv2d(
                         net, 4 * self._boxes_per_anchor,
                         [1, 1], scope='reg_feat')
-                    grid_h = tf.div(tf.shape(net)[1], stride)
-                    grid_w = tf.div(tf.shape(net)[2], stride)
-                    n_anchors = grid_h * grid_w * self._boxes_per_anchor
-                    shape = tf.stack([-1, n_anchors])
-                    print("************ ", shape)
-                    regs = tf.reshape(net, shape)
+                    # grid_h = tf.div(tf.shape(net)[1], stride)
+                    # grid_w = tf.div(tf.shape(net)[2], stride)
+                    # n_anchors = grid_h * grid_w * self._boxes_per_anchor
+                    # shape = tf.stack([-1, n_anchors])
+                    regs = tf.reshape(net, shape=(tf.shape(net)[0], -1))
                     bbox_regs.append(regs)
         bbox_regs = tf.concat(bbox_regs, axis=1)
         bbox_regs = tf.reshape(bbox_regs, [-1, 4])
