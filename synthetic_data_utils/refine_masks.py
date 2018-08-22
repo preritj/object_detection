@@ -8,6 +8,80 @@ from bilateral_solver import apply_bilateral
 from multiprocessing import Pool
 from functools import partial
 import signal
+from scipy.interpolate import UnivariateSpline
+
+
+def create_LUT_8UC1(x, y):
+    spl = UnivariateSpline(x, y)
+    return spl(range(256))
+
+
+def warm_image(image):
+    incr_ch_lut0 = create_LUT_8UC1([0, 64, 128, 192, 256],
+                                  [0, 70, 140, 210, 256])
+    incr_ch_lut = create_LUT_8UC1([0, 64, 128, 192, 256],
+                                  [0, 84, 168, 224, 256])
+    # decr_ch_lut = create_LUT_8UC1([0, 64, 128, 192, 256],
+    #                               [0, 30, 80, 120, 192])
+    decr_ch_lut = create_LUT_8UC1([0, 64, 128, 192, 256],
+                                  [0, 38, 76, 120, 192])
+    c_b, c_g, c_r = cv2.split(image)
+    c_r = cv2.LUT(c_r, incr_ch_lut).astype(np.uint8)
+    c_g = cv2.LUT(c_g, incr_ch_lut0).astype(np.uint8)
+    c_b = cv2.LUT(c_b, decr_ch_lut).astype(np.uint8)
+    # c_r = np.clip(1.2 * c_r - 10, 0, 255).astype(np.uint8)
+    # c_g = np.clip(1.4 * c_g - 20, 0, 255).astype(np.uint8)
+    # c_b = np.clip(0.85 * c_b, 0, 255).astype(np.uint8)
+    image_warm = cv2.merge((c_b, c_g, c_r))
+
+    # c_b = cv2.LUT(c_b, decr_ch_lut).astype(np.uint8)
+
+    # increase color saturation
+    c_h, c_s, c_v = cv2.split(cv2.cvtColor(image_warm,
+                                           cv2.COLOR_BGR2HSV))
+    c_s = cv2.LUT(c_s, incr_ch_lut0).astype(np.uint8)
+    # c_s = np.clip(1.4 * c_s, 0, 255).astype(np.uint8)
+
+    image_warm = cv2.cvtColor(cv2.merge(
+        (c_h, c_s, c_v)), cv2.COLOR_HSV2BGR)
+    return image_warm
+
+
+def increase_saturation(image):
+    incr_ch_lut = create_LUT_8UC1([0, 64, 128, 192, 256],
+                                  [0, 96, 192, 236, 256])
+    c_h, c_s, c_v = cv2.split(cv2.cvtColor(image,
+                                           cv2.COLOR_BGR2HSV))
+    c_s = cv2.LUT(c_s, incr_ch_lut).astype(np.uint8)
+    return cv2.cvtColor(cv2.merge((c_h, c_s, c_v)), cv2.COLOR_HSV2BGR)
+
+
+def reduce_red_in_image(image):
+    incr_ch_lut = create_LUT_8UC1([0, 64, 128, 192, 256],
+                                  [0, 90, 180, 230, 256])
+    decr_ch_lut0 = create_LUT_8UC1([0, 64, 128, 192, 256],
+                                   [0, 48, 100, 188, 256])
+    decr_ch_lut = create_LUT_8UC1([0, 64, 128, 192, 256],
+                                  [0, 40, 90, 180, 256])
+    c_b, c_g, c_r = cv2.split(image)
+    c_r = cv2.LUT(c_r, decr_ch_lut).astype(np.uint8)
+    c_b = cv2.LUT(c_b, decr_ch_lut).astype(np.uint8)
+    c_g = cv2.LUT(c_g, decr_ch_lut0).astype(np.uint8)
+    # # c_r = np.clip(1.2 * c_r - 10, 0, 255).astype(np.uint8)
+    # # c_g = np.clip(1.4 * c_g - 20, 0, 255).astype(np.uint8)
+    # # c_b = np.clip(0.85 * c_b, 0, 255).astype(np.uint8)
+    # c_r = np.clip(0.5 * c_r, 0, 255).astype(np.uint8)
+    image = cv2.merge((c_b, c_g, c_r))
+
+    # increase color saturation
+    c_h, c_s, c_v = cv2.split(cv2.cvtColor(image,
+                                           cv2.COLOR_BGR2HSV))
+    c_v = cv2.LUT(c_v, incr_ch_lut).astype(np.uint8)
+    # c_s = np.clip(1.4 * c_s, 0, 255).astype(np.uint8)
+
+    image = cv2.cvtColor(cv2.merge(
+        (c_h, c_s, c_v)), cv2.COLOR_HSV2BGR)
+    return image
 
 
 def get_mask_v0(filename, crop=None, scale=1, flip=False,
@@ -68,7 +142,8 @@ def get_approx_mask(image, bkg_median, threshold=30):
     return mask
 
 
-def get_mask(filename, crop=None, scale=1, flip=False, reflective=False):
+def get_mask(filename, crop=None, scale=1, flip=False, reflective=False,
+             warm=False, reduce_red=False, saturate=False):
     img = cv2.imread(filename)
     if crop is not None:
         y1, x1, y2, x2 = crop
@@ -78,6 +153,11 @@ def get_mask(filename, crop=None, scale=1, flip=False, reflective=False):
                          interpolation=cv2.INTER_AREA)
     if flip:
         img = cv2.flip(img, 1)
+    if reduce_red:
+        img = reduce_red_in_image(img)
+    if saturate:
+        img = increase_saturation(img)
+
     h, w = img.shape[:2]
     # extract background color from bottom
     img_lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
@@ -87,12 +167,12 @@ def get_mask(filename, crop=None, scale=1, flip=False, reflective=False):
     mask = cv2.GC_PR_BGD * np.ones(img.shape[:2], np.uint8)
 
     # get masks with varying thresholds
-    thresh1 = 25 if reflective else 40
-    thresh2 = 15 if reflective else 25
+    thresh1 = 20 if reflective else 40  # 40
+    thresh2 = 10 if reflective else 25  # 25
     obj_mask = get_approx_mask(ab, ab_median, threshold=thresh1)
     pr_obj_mask = get_approx_mask(ab, ab_median, threshold=thresh2)
-    pr_bkg_mask = 1 - get_approx_mask(ab, ab_median, threshold=3)
-    bkg_mask = 1 - get_approx_mask(ab, ab_median, threshold=2)
+    pr_bkg_mask = 1 - get_approx_mask(ab, ab_median, threshold=4)
+    bkg_mask = 1 - get_approx_mask(ab, ab_median, threshold=3)
 
     # Run grabcut algorithm
     mask[pr_bkg_mask > 0] = cv2.GC_PR_BGD
@@ -118,6 +198,8 @@ def get_mask(filename, crop=None, scale=1, flip=False, reflective=False):
     # score[obj_mask > 0] = 1.
     # score[bkg_mask > 0] = 1.
     # mask = apply_bilateral(img, mask, score, thresh=.7)
+    if warm:
+        img = warm_image(img)
     return img, mask
 
 
@@ -129,11 +211,13 @@ def init_worker():
 
 
 def create_mask_wrapper(args, crop=None, scale=1, flip=False,
-                        reflective=False):
+                        reflective=False, warm=False, reduce_red=False,
+                        saturate=False):
     """Wrapper used to pass params to workers"""
     input_filename, output_filename = args[0], args[1]
     try:
-        img, mask = get_mask(input_filename, crop, scale, flip, reflective)
+        img, mask = get_mask(input_filename, crop, scale, flip, reflective,
+                             warm, reduce_red, saturate)
     except:
         return
     mask = np.expand_dims(mask, axis=2)
@@ -150,6 +234,9 @@ def refine_masks(args_):
     scale = args_.scale
     flip = args_.flip
     reflective = args_.reflective
+    warm = args_.warm
+    reduce_red = args_.reduce_red
+    saturate = args_.saturate
     skip_contours = args_.skip_contours
     skip_bilateral = args_.skip_bilateral
     for p in prods:
@@ -178,7 +265,8 @@ def refine_masks(args_):
             params_list.append(params)
         partial_func = partial(
             create_mask_wrapper,
-            crop=crop, scale=scale, flip=flip, reflective=reflective)
+            crop=crop, scale=scale, flip=flip, reflective=reflective,
+            warm=warm, reduce_red=reduce_red, saturate=saturate)
         p = Pool(args_.number_of_workers, init_worker)
         try:
             p.map(partial_func, params_list)
@@ -213,6 +301,15 @@ def parse_args():
     parser.add_argument(
         "--reflective",
         help="Setting for reflective objects. Default is to not use this setting.", action="store_true")
+    parser.add_argument(
+        "--warm",
+        help="Increase color temperature. Default is to not use this setting.", action="store_true")
+    parser.add_argument(
+        "--reduce_red",
+        help="Decrease R in RGB image. Default is to not use this setting.", action="store_true")
+    parser.add_argument(
+        "--saturate",
+        help="Increase saturation. Default is to not use this setting.", action="store_true")
     parser.add_argument(
         "--scale",
         help="Scaling applied to images. Defaults to 1.", default=1, type=float)

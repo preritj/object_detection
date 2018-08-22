@@ -63,7 +63,7 @@ class Inference(object):
                 self.model_cfg.base_anchor_sizes,
                 self.model_cfg.anchor_strides)):
             grid_shape = tf.constant(
-                self.model_cfg.input_shape, tf.int32) / stride
+                self.infer_cfg.network_input_shape, tf.int32) / stride
             anchors = generate_anchors(
                 grid_shape=grid_shape,
                 base_anchor_size=base_anchor_size,
@@ -216,7 +216,6 @@ class Inference(object):
     def _run_inference(self, sess, images):
         t0 = time.time()
         t1 = time.time()
-        print("************************* ", images.shape)
 
         bbox_on_images = sess.run(
             self.network_tensors['bbox_on_images'],

@@ -98,7 +98,7 @@ fpn_depth: 96
 --- !infer
 model_dir: models/latest
 frozen_model: frozen_model.pb
-network_input_shape: [384, 384]
+network_input_shape: [576, 896]  # [384, 384]
 products_csv: '/media/storage/datasets/products/products.csv'
 
 top_k: 10
@@ -107,7 +107,7 @@ top_k: 10
 # all coordinates normalized wrt height of the full frame
 frame_crops:
 #  - [0., 1.1, .8, 1.9]
-  - [0., 0., 1., 1.]
+  - [0., 0., 1., 1.56]
 #   - [0.3, .3, 1., 1.]
 #   - [0.140, 0.390, 0.530, 0.780]
 #   - [0.180, 0.720, 0.540, 1.080]

@@ -78,14 +78,16 @@ def overlap(a, b):
     """
     dx = min(a.xmax, b.xmax) - max(a.xmin, b.xmin)
     dy = min(a.ymax, b.ymax) - max(a.ymin, b.ymin)
+    ioa1 = MAX_ALLOWED_IOU * (a.xmax - a.xmin) * (a.ymax - a.ymin)
+    ioa2 = MAX_ALLOWED_IOU * (b.xmax - b.xmin) * (b.ymax - b.ymin)
     
-    if (dx >= 0) and (dy >= 0) and float(dx*dy) > MAX_ALLOWED_IOU*(a.xmax-a.xmin)*(a.ymax-a.ymin):
+    if (dx >= 0) and (dy >= 0) and (float(dx*dy) > ioa1 or float(dx*dy) > ioa2):
         return True
     else:
         return False
 
 
-def get_list_of_images(root_dir, N=300):
+def get_list_of_images(root_dir, N=500):
     """Gets the list of images of objects in the root directory. The expected format
        is root_dir/<object>/<image>.jpg. Adds an image as many times you want it to 
        appear in dataset.
@@ -313,23 +315,24 @@ def rotate_bound(image, angle, out_size):
 
 def create_image_anno_wrapper(args, w=WIDTH, h=HEIGHT, scale_augment=False,
                               rotation_augment=False, blending_list=['none'],
-                              dontocclude=False):
+                              dontocclude=False, stacking=False):
     """Wrapper used to pass params to workers"""
     return create_image_anno(*args, w=w, h=h, scale_augment=scale_augment,
                              rotation_augment=rotation_augment,
-                             blending_list=blending_list, dontocclude=dontocclude)
+                             blending_list=blending_list, dontocclude=dontocclude,
+                             stacking=stacking)
 
 
-def create_image_anno(objects, distractor_objects, stacked_objects, img_file, anno_file,
+def create_image_anno(objects, distractor_objects, img_file, anno_file,
                       bg_file,  w=WIDTH, h=HEIGHT, scale_augment=False,
-                      rotation_augment=False, blending_list=['none'], dontocclude=False):
+                      rotation_augment=False, blending_list=['none'],
+                      dontocclude=False, stacking=False):
     """Add data augmentation, synthesizes images and generates annotations according to given parameters
 
     Args:
         objects(list): List of objects whose annotations are also important
         distractor_objects(list): List of distractor objects that will be synthesized but
             whose annotations are not required
-        stacked_objects(list): List of objects to be stacked
         img_file(str): Image file name
         anno_file(str): Annotation file name
         bg_file(str): Background image path 
@@ -339,6 +342,7 @@ def create_image_anno(objects, distractor_objects, stacked_objects, img_file, an
         rotation_augment(bool): Add rotation data augmentation
         blending_list(list): List of blending modes to synthesize for each image
         dontocclude(bool): Generate images with occlusion
+        stacking(bool): whether to stack objects
     """
     if 'none' not in img_file:
         return 
@@ -348,12 +352,7 @@ def create_image_anno(objects, distractor_objects, stacked_objects, img_file, an
         return anno_file
 
     attempt = 0
-    all_objects = []
-    stack_indices =
-    for stacked_obj in stacked_objects:
-        n = random.randint(MIN_OBJECTS_IN_STACK, MAX_OBJECTS_IN_STACK)
-        all_objects += n * [stacked_obj]
-    all_objects += objects + distractor_objects
+    all_objects = objects + distractor_objects
     while True:
         top = Element('annotation')
         background = Image.open(bg_file).convert('RGB')
@@ -392,7 +391,7 @@ def create_image_anno(objects, distractor_objects, stacked_objects, img_file, an
             backgrounds.append(background.copy())
         
         already_syn = [] if dontocclude else None
-        for idx, (obj, n_stacks) in enumerate(zip(all_objects, all_stacks)):
+        for idx, obj in enumerate(all_objects):
             foreground = Image.open(obj[0])
             foreground_array = cv2.imread(obj[0], cv2.IMREAD_UNCHANGED)
             xmin, xmax, ymin, ymax = get_annotation_from_mask_file(get_mask_file(obj[0]))
@@ -543,7 +542,7 @@ def create_image_anno(objects, distractor_objects, stacked_objects, img_file, an
 
 
 def gen_syn_data(img_files, labels, img_dir, anno_dir, scale_augment, rotation_augment,
-                 dontocclude, add_distractors, add_stacked_objects):
+                 dontocclude, add_distractors, stacking):
     """Creates list of objects and distrctor objects to be pasted on what images.
        Spawns worker processes and generates images according to given params
 
@@ -556,7 +555,7 @@ def gen_syn_data(img_files, labels, img_dir, anno_dir, scale_augment, rotation_a
         rotation_augment(bool): Add rotation data augmentation
         dontocclude(bool): Generate images with occlusion
         add_distractors(bool): Add distractor objects whose annotations are not required
-        add_stacked_objects(bool): Add stacks of objects
+        stacking(bool): Add stacks of objects
     """
     w = WIDTH
     h = HEIGHT
@@ -589,12 +588,6 @@ def gen_syn_data(img_files, labels, img_dir, anno_dir, scale_augment, rotation_a
         n = min(random.randint(MIN_NO_OF_OBJECTS, MAX_NO_OF_OBJECTS), len(img_labels))
         for i in range(n):
             objects.append(img_labels.pop())
-        stacked_objects = []
-        if add_stacked_objects:
-            n = min(random.randint(MIN_NO_OF_STACKED_OBJECTS, MAX_NO_OF_STACKED_OBJECTS),
-                    len(img_labels))
-            for i in range(n):
-                stacked_objects.append(img_labels.pop())
         # Get list of distractor objects 
         distractor_objects = []
         if add_distractors:
@@ -607,14 +600,14 @@ def gen_syn_data(img_files, labels, img_dir, anno_dir, scale_augment, rotation_a
         for blur in BLENDING_LIST:
             img_file = os.path.join(img_dir, '%i_%s.jpg' % (idx, blur))
             anno_file = os.path.join(anno_dir, '%i.xml' % idx)
-            params = (objects, distractor_objects, stacked_objects, img_file, anno_file, bg_file)
+            params = (objects, distractor_objects, img_file, anno_file, bg_file)
             params_list.append(params)
             img_files.append(img_file)
             anno_files.append(anno_file)
 
     partial_func = partial(create_image_anno_wrapper, w=w, h=h, scale_augment=scale_augment,
                            rotation_augment=rotation_augment, blending_list=BLENDING_LIST,
-                           dontocclude=dontocclude)
+                           dontocclude=dontocclude, stacking=stacking)
     p = Pool(NUMBER_OF_WORKERS, init_worker)
     try:
         p.map(partial_func, params_list)
@@ -655,7 +648,8 @@ def generate_synthetic_dataset(args):
     if not os.path.exists(os.path.join(img_dir)):
         os.makedirs(img_dir)
     
-    syn_img_files, anno_files = gen_syn_data(img_files, labels, img_dir, anno_dir, args.scale, args.rotation, args.dontocclude, args.add_distractors)
+    syn_img_files, anno_files = gen_syn_data(img_files, labels, img_dir, anno_dir, args.scale,
+                                             args.rotation, args.dontocclude, args.add_distractors, False)
     write_imageset_file(args.exp, syn_img_files, anno_files)
 
 
@@ -678,7 +672,7 @@ def parse_args():
         help="Add rotation augmentation.Default is to add rotation augmentation.", action="store_false")
     parser.add_argument(
         "--num",
-        help="Number of images per category", default=300, type=int)
+        help="Number of images per category", default=500, type=int)
     parser.add_argument(
         "--dontocclude",
         help="Add objects without occlusion. Default is to produce occlusions", action="store_true")
