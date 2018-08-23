@@ -301,7 +301,7 @@ class Inference(object):
                 bbox_on_images, t = self._run_inference(sess, images)
                 stats.update(t)
                 delta_t = t[2] - t[0]
-                time.sleep(max(self.infer_cfg.camera_capture_interval - delta_t, 0.5))
+                time.sleep(max(self.infer_cfg.camera_capture_interval - delta_t, 0.05))
                 if not self.display_output(bbox_on_images):
                     break
             cap.release()

@@ -53,7 +53,7 @@ def visualize_bboxes_on_image(image, boxes, top_classes,
         # class_labels[top_class[0]]
     labels_detected.sort()
     labels_detected = np.unique(labels_detected)
-    legend = 255 * np.ones((320, im_width, 3), dtype=np.uint8)
+    legend = 255 * np.ones((480, im_width, 3), dtype=np.uint8)
     for i, l in enumerate(labels_detected):
         y = i * 20
         legend = cv2.rectangle(legend, (0, y), (im_width, y + 20),
