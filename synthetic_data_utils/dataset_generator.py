@@ -155,16 +155,19 @@ def get_annotation_from_mask_file(mask_file, scale=1.0):
         tuple: Bounding box annotation (xmin, xmax, ymin, ymax)
     """
     if os.path.exists(mask_file):
-        mask = cv2.imread(mask_file)
-        if INVERTED_MASK:
-            mask = 255 - mask
-        rows = np.any(mask, axis=1)
-        cols = np.any(mask, axis=0)
-        if len(np.where(rows)[0]) > 0:
-            ymin, ymax = np.where(rows)[0][[0, -1]]
-            xmin, xmax = np.where(cols)[0][[0, -1]]
-            return int(scale*xmin), int(scale*xmax), int(scale*ymin), int(scale*ymax)
-        else:
+        try:
+            mask = cv2.imread(mask_file, cv2.IMREAD_UNCHANGED)
+            if INVERTED_MASK:
+                mask = 255 - mask
+            rows = np.any(mask, axis=1)
+            cols = np.any(mask, axis=0)
+            if len(np.where(rows)[0]) > 0:
+                ymin, ymax = np.where(rows)[0][[0, -1]]
+                xmin, xmax = np.where(cols)[0][[0, -1]]
+                return int(scale*xmin), int(scale*xmax), int(scale*ymin), int(scale*ymax)
+            else:
+                return -1, -1, -1, -1
+        except:
             return -1, -1, -1, -1
     else:
         print("%s not found. Using empty mask instead."%mask_file)
@@ -355,7 +358,10 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
     all_objects = objects + distractor_objects
     while True:
         top = Element('annotation')
-        background = Image.open(bg_file).convert('RGB')
+        try:
+            background = Image.open(bg_file).convert('RGB')
+        except:
+            continue
         img_w, img_h = background.size
         aspect_r = img_w / img_h
         x0, y0 = 0, 0
@@ -392,8 +398,11 @@ def create_image_anno(objects, distractor_objects, img_file, anno_file,
         
         already_syn = [] if dontocclude else None
         for idx, obj in enumerate(all_objects):
-            foreground = Image.open(obj[0])
-            foreground_array = cv2.imread(obj[0], cv2.IMREAD_UNCHANGED)
+            try:
+                foreground = Image.open(obj[0])
+                foreground_array = cv2.imread(obj[0], cv2.IMREAD_UNCHANGED)
+            except:
+                continue
             xmin, xmax, ymin, ymax = get_annotation_from_mask_file(get_mask_file(obj[0]))
             if xmin == -1 or ymin == -1 or xmax - xmin < MIN_WIDTH or ymax - ymin < MIN_HEIGHT:
                 continue

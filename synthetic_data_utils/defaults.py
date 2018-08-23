@@ -1,6 +1,6 @@
 # Paths
 # Fill this according to own setup
-BACKGROUND_DIR = '/media/storage/datasets/products/background/Images/warehouse'
+BACKGROUND_DIR = '/media/storage/datasets/products/background/Images/nursery'
 BACKGROUND_GLOB_STRING = '*.jpg'
 POISSON_BLENDING_DIR = '/usr1/debidatd/pb'
 SELECTED_LIST_FILE = '/media/storage/datasets/products/TrainData/selected_objects.txt'
@@ -27,6 +27,6 @@ MIN_SCALE = 0.30  # min scale for scale augmentation
 MAX_SCALE = 0.60  # max scale for scale augmentation
 MAX_DEGREES = 30  # max rotation allowed during rotation augmentation
 MAX_TRUNCATION_FRACTION = 0.25  # max fraction to be truncated = MAX_TRUNCACTION_FRACTION*(WIDTH/HEIGHT)
-MAX_ALLOWED_IOU = 0.75  # IOU > MAX_ALLOWED_IOU is considered an occlusion
+MAX_ALLOWED_IOU = 0.5  # IOU > MAX_ALLOWED_IOU is considered an occlusion
 MIN_WIDTH = 6  # Minimum width of object to use for data generation
 MIN_HEIGHT = 6  # Minimum height of object to use for data generation

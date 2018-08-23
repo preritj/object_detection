@@ -167,8 +167,8 @@ def get_mask(filename, crop=None, scale=1, flip=False, reflective=False,
     mask = cv2.GC_PR_BGD * np.ones(img.shape[:2], np.uint8)
 
     # get masks with varying thresholds
-    thresh1 = 20 if reflective else 40  # 40
-    thresh2 = 10 if reflective else 25  # 25
+    thresh1 = 30 if reflective else 40  # 40
+    thresh2 = 20 if reflective else 25  # 25
     obj_mask = get_approx_mask(ab, ab_median, threshold=thresh1)
     pr_obj_mask = get_approx_mask(ab, ab_median, threshold=thresh2)
     pr_bkg_mask = 1 - get_approx_mask(ab, ab_median, threshold=4)
