@@ -22,12 +22,12 @@ out_labels: ./labels.csv
 is_training: true
 model_dir: './models'
 num_epochs: 0
-learning_rate: 0.0007
+learning_rate: 0.001
 learning_rate_decay:
-  decay_steps: 2000
+  decay_steps: 3000
   decay_rate: 0.97
 
-batch_size: 32
+batch_size: 16
 shuffle: true
 
 augmentation:
@@ -48,15 +48,15 @@ filenames_shuffle_buffer_size: 100
 num_parallel_map_calls: 12  # ~ num of CPU cores or less
 num_readers: 32
 read_block_length: 64
-shuffle_buffer_size: 4096
+shuffle_buffer_size: 131072
 prefetch_size: 64  # ~ 2 x batch-size
 
 
 bbox_clf_weight: 10.
 bbox_reg_weight: 1.
 
-warm_start: false
-warm_start_path: ./models/latest/model.ckpt-182268
+warm_start: true
+warm_start_path: ./models/latest/model.ckpt-242858
 
 quantize: False
 

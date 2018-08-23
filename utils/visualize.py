@@ -22,7 +22,7 @@ def visualize_bboxes_on_image_v0(image, boxes, top_classes,
             top_pick = top_class[1]
         draw.line([(left, top), (left, bottom), (right, bottom),
                    (right, top), (left, top)], width=2, fill='red')
-        draw.rectangle([(left, top), (left + 27, top + 20)], fill='red')
+        draw.rectangle([(left, top), (left + 32, top + 20)], fill='red')
         font = ImageFont.truetype("Arial.ttf", 14)
         draw.text((left, top), class_labels[top_pick],
                   (255, 255, 255), font=font)
@@ -45,7 +45,7 @@ def visualize_bboxes_on_image(image, boxes, top_classes,
             continue
         image = cv2.rectangle(image, (left, top), (right, bottom),
                               (255, 0, 0), 2)
-        image = cv2.rectangle(image, (left, top), (left + 27, top + 20),
+        image = cv2.rectangle(image, (left, top), (left + 32, top + 20),
                               (255, 0, 0), -1)
         image = cv2.putText(image, str(top_class[0]), (left, top + 16),
                             font, 0.5, (255, 255, 255), 1)
@@ -58,11 +58,11 @@ def visualize_bboxes_on_image(image, boxes, top_classes,
         y = i * 20
         legend = cv2.rectangle(legend, (0, y), (im_width, y + 20),
                                (255, 0, 0), 2)
-        legend = cv2.rectangle(legend, (0, y), (27, y + 20),
+        legend = cv2.rectangle(legend, (0, y), (32, y + 20),
                                (255, 0, 0), -1)
         legend = cv2.putText(legend, str(l), (2, y + 16),
                              font, 0.5, (255, 255, 255), 1)
-        legend = cv2.putText(legend, class_labels[l], (30, y + 16),
+        legend = cv2.putText(legend, class_labels[l], (35, y + 16),
                              font, 0.5, (0, 0, 0), 1)
     image = np.concatenate([image, legend], axis=0)
     return image
