@@ -24,8 +24,8 @@ model_dir: './models'
 num_epochs: 0
 learning_rate: 0.001
 learning_rate_decay:
-  decay_steps: 3000
-  decay_rate: 0.97
+  decay_steps: 5000
+  decay_rate: 0.99
 
 batch_size: 16
 shuffle: true
@@ -55,7 +55,7 @@ prefetch_size: 64  # ~ 2 x batch-size
 bbox_clf_weight: 10.
 bbox_reg_weight: 1.
 
-warm_start: true
+warm_start: false
 warm_start_path: ./models/latest/model.ckpt-242858
 
 quantize: False
