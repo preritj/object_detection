@@ -36,11 +36,7 @@ def server_error(e):
 
 
 # API route
-@app.route('/api', methods=['POST', 'GET'])
-def api():
-    file_path = request.args['filepath']
-    assert os.path.exists(file_path), file_path
-    image = cv2.imread(file_path)
+def do_infer(image):
     image = image[:, :, :3]  # remove alpha
     image = image[:, :, ::-1]  # BGR -> RGB
     h, w = cfg.network_input_shape
@@ -72,6 +68,31 @@ def api():
     response = jsonify(output_data)
     return response
 
+# API route
+@app.route('/api', methods=['POST', 'GET'])
+def api():
+    file_path = request.args['filepath']
+    assert os.path.exists(file_path), file_path
+    image = cv2.imread(file_path)
+    return do_infer(image)
+    
+@app.route('/bin', methods=['POST', 'GET'])
+def bin():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            data = np.fromstring(request.data, dtype=np.uint8)
+        else
+            file = request.files['file']
+            if file.filename == '':
+              return abort(400, 'no selected file')
+            in_memory_file = io.BytesIO()
+            file.save(in_memory_file)
+            data = np.fromstring(in_memory_file.getvalue(), dtype=np.uint8)
+        
+        color_image_flag = 1
+        image = cv2.imdecode(data, color_image_flag)
+        return do_infer(image)
+    return abort(400, 'get not supported')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
