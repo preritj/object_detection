@@ -1,8 +1,8 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 from flask_cors import CORS
 from inference import Inference
 import numpy as np
-import cv2, os
+import cv2, os, io
 
 
 # Initialize the Flask application
@@ -76,23 +76,21 @@ def api():
     image = cv2.imread(file_path)
     return do_infer(image)
     
-@app.route('/bin', methods=['POST', 'GET'])
+@app.route('/bin', methods=['POST'])
 def bin():
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            data = np.fromstring(request.data, dtype=np.uint8)
-        else
-            file = request.files['file']
-            if file.filename == '':
-              return abort(400, 'no selected file')
-            in_memory_file = io.BytesIO()
-            file.save(in_memory_file)
-            data = np.fromstring(in_memory_file.getvalue(), dtype=np.uint8)
-        
-        color_image_flag = 1
-        image = cv2.imdecode(data, color_image_flag)
-        return do_infer(image)
-    return abort(400, 'get not supported')
+    if 'file' not in request.files:
+        data = np.fromstring(request.data, dtype=np.uint8)
+    else:
+        file = request.files['file']
+        if file.filename == '':
+          return abort(400, 'no selected file')
+        in_memory_file = io.BytesIO()
+        file.save(in_memory_file)
+        data = np.fromstring(in_memory_file.getvalue(), dtype=np.uint8)
+    
+    color_image_flag = 1
+    image = cv2.imdecode(data, color_image_flag)
+    return do_infer(image)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
