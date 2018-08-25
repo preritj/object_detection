@@ -108,7 +108,7 @@ class Inference(object):
                 selected_indices = tf.image.non_max_suppression(
                     bboxes, scores,
                     max_output_size=200,
-                    iou_threshold=0.5)
+                    iou_threshold=0.7)
                 bboxes = tf.gather(bboxes, selected_indices)
                 class_probs = tf.gather(class_probs, selected_indices)
                 top_probs, top_classes = tf.nn.top_k(class_probs, 1)
@@ -164,8 +164,8 @@ class Inference(object):
                 scores = tf.gather(obj_prob, indices)
                 selected_indices = tf.image.non_max_suppression(
                     bboxes, scores,
-                    max_output_size=30,
-                    iou_threshold=0.4)
+                    max_output_size=200,
+                    iou_threshold=0.7)
                 bboxes = tf.gather(bboxes, selected_indices)
                 scaling = tf.constant(
                     [self.img_h, self.img_w, self.img_h, self.img_w],
@@ -224,7 +224,7 @@ class Inference(object):
         t3 = time.time()
         return bbox_on_images, [t0, t1, t2, t3]
 
-    def display_output(self, bbox_on_images):
+    def display_output(self, bbox_on_images, wait_interval=1):
         n, h, w = bbox_on_images.shape[:3]
         sep = np.zeros((h, 10, 3), dtype=np.uint8)
         out = bbox_on_images[0]
@@ -232,9 +232,9 @@ class Inference(object):
             out = np.concatenate([out, sep, bbox_on_images[i]], axis=1)
         out = cv2.cvtColor(out, cv2.COLOR_RGB2BGR)
         cv2.imshow('out', out)
-        if cv2.waitKey(10000) == 27:  # Esc key to stop
+        if cv2.waitKey(wait_interval) == 27:  # Esc key to stop
             return 0
-        elif cv2.waitKey(10000) & 0xFF == ord('q'):
+        elif cv2.waitKey(wait_interval) & 0xFF == ord('q'):
             return 0
         return 1
 
@@ -275,7 +275,7 @@ class Inference(object):
                 images = np.array(self.preprocess_image(image))
                 bbox_on_images, t = self._run_inference(sess, images)
                 stats.update(t)
-                if not self.display_output(bbox_on_images):
+                if not self.display_output(bbox_on_images, wait_interval=10000):
                     break
         elif input_type == 'video':
             video_file = self.infer_cfg.video

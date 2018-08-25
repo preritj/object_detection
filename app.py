@@ -2,7 +2,9 @@ from flask import Flask, request, jsonify, abort
 from flask_cors import CORS
 from inference import Inference
 import numpy as np
-import cv2, os, io
+import cv2
+import os
+import io
 
 
 # Initialize the Flask application
@@ -68,6 +70,7 @@ def do_infer(image):
     response = jsonify(output_data)
     return response
 
+
 # API route
 @app.route('/api', methods=['POST', 'GET'])
 def api():
@@ -75,7 +78,8 @@ def api():
     assert os.path.exists(file_path), file_path
     image = cv2.imread(file_path)
     return do_infer(image)
-    
+
+
 @app.route('/bin', methods=['POST'])
 def bin():
     if 'file' not in request.files:
@@ -83,7 +87,7 @@ def bin():
     else:
         file = request.files['file']
         if file.filename == '':
-          return abort(400, 'no selected file')
+            return abort(400, 'no selected file')
         in_memory_file = io.BytesIO()
         file.save(in_memory_file)
         data = np.fromstring(in_memory_file.getvalue(), dtype=np.uint8)
@@ -91,6 +95,7 @@ def bin():
     color_image_flag = 1
     image = cv2.imdecode(data, color_image_flag)
     return do_infer(image)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
