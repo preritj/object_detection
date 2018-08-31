@@ -3,7 +3,7 @@
 !test.ipynb
 .ipynb_checkpoints/
 models/*
-!models/latest
+models/latest
 synthetic_data_utils/*.ipynb
 synthetic_data_utils/.ipynb*
 __pycache__/
